@@ -1,0 +1,27 @@
+services:
+  glimt:
+    build: .
+    # image: ghcr.io/klppl/glimt:latest   # or pull a prebuilt image
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      GLIMT_ADDR: ":8080"
+      GLIMT_DB: "/data/glimt.db"
+      # First admin is created on first boot from these:
+      GLIMT_ADMIN_USER: "admin"
+      GLIMT_ADMIN_PASS: "change-me-now"
+      # Public base URL (enables Secure cookies + absolute share/snippet links):
+      GLIMT_BASE_URL: "https://stats.example.com"
+      # The header your reverse proxy sets with the real client IP.
+      # npmplus / nginx: X-Forwarded-For. Cloudflare: CF-Connecting-IP.
+      GLIMT_REAL_IP_HEADER: "X-Forwarded-For"
+      # Optional GeoIP (mount the file via the volume below):
+      GLIMT_GEO_DB: "/data/geo.mmdb"
+    volumes:
+      - glimt-data:/data
+      # Put your dbip-country-lite.mmdb or GeoLite2-City.mmdb at ./geo.mmdb:
+      # - ./geo.mmdb:/data/geo.mmdb:ro
+
+volumes:
+  glimt-data:

@@ -1,0 +1,78 @@
+{{define "content"}}
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">glimt<span class="dot">.</span></div>
+    <div class="topbar-mid">
+      {{if not .Public}}
+      <form class="site-switch" method="get" action="/">
+        <select name="site" onchange="this.form.submit()">
+          {{$cur := .Site}}
+          {{range .Sites}}
+          <option value="{{.ID}}" {{if eq .ID $cur.ID}}selected{{end}}>{{.Name}}</option>
+          {{end}}
+        </select>
+        <input type="hidden" name="range" value="{{.Range}}">
+      </form>
+      {{else}}
+      <div class="site-name">{{.Site.Name}}</div>
+      {{end}}
+    </div>
+    <div class="topbar-right">
+      {{if not .Public}}
+      <span class="live" hx-get="/app/realtime?site={{.Site.ID}}" hx-trigger="load, every 15s">
+        <i class="pulse"></i>{{.Realtime}}
+      </span>
+      <a class="navlink" href="/settings">Settings</a>
+      <a class="navlink" href="/logout">Sign out</a>
+      {{else}}
+      <span class="live"><i class="pulse"></i>{{.Realtime}}</span>
+      {{end}}
+    </div>
+  </header>
+
+  <nav class="ranges">
+    {{$base := "/"}}{{$q := printf "?site=%d&range=" .Site.ID}}
+    {{if .Public}}{{$base = printf "/p/%s" .ShareToken}}{{$q = "?range="}}{{end}}
+    {{range .Ranges}}
+    <a class="range {{if .Selected}}active{{end}}" href="{{$base}}{{$q}}{{.Key}}">{{.Label}}</a>
+    {{end}}
+  </nav>
+
+  <section class="kpis">
+    <div class="kpi"><span class="kpi-label">Visitors</span><span class="kpi-val">{{num .Summary.Visitors}}</span></div>
+    <div class="kpi"><span class="kpi-label">Pageviews</span><span class="kpi-val">{{num .Summary.Pageviews}}</span></div>
+    <div class="kpi"><span class="kpi-label">Visits</span><span class="kpi-val">{{num .Summary.Visits}}</span></div>
+    <div class="kpi"><span class="kpi-label">Bounce rate</span><span class="kpi-val">{{pct .Summary.BounceRate}}</span></div>
+    <div class="kpi"><span class="kpi-label">Avg. visit</span><span class="kpi-val">{{dur .Summary.AvgDuration}}</span></div>
+  </section>
+
+  <section class="card chart-card">
+    {{.Chart}}
+  </section>
+
+  <section class="panels">
+    {{range .Panels}}
+    <div class="card panel">
+      <div class="panel-head"><h3>{{.Title}}</h3><span class="panel-metric">{{.Metric}}</span></div>
+      {{if .Rows}}
+      <ul class="bars">
+        {{range .Rows}}
+        <li class="bar-row">
+          <span class="bar-fill" style="width:{{printf "%.1f" .Percent}}%"></span>
+          <span class="bar-label" title="{{.Display}}">{{.Display}}</span>
+          <span class="bar-count">{{num .Count}}</span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="empty">No data.</p>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+
+  <footer class="foot">
+    {{if .Public}}Public dashboard · {{end}}powered by <strong>glimt</strong>
+  </footer>
+</div>
+{{end}}

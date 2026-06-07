@@ -1,0 +1,8 @@
+.git
+*.db
+*.db-wal
+*.db-shm
+*.mmdb
+/data
+config.json
+README.md

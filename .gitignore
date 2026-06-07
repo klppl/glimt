@@ -1,0 +1,7 @@
+/glimt
+*.db
+*.db-wal
+*.db-shm
+*.mmdb
+/data/
+config.json

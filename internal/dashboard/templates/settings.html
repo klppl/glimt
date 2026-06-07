@@ -1,0 +1,73 @@
+{{define "content"}}
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">glimt<span class="dot">.</span></div>
+    <div class="topbar-mid"><div class="site-name">Settings</div></div>
+    <div class="topbar-right">
+      <a class="navlink" href="/">Dashboard</a>
+      <a class="navlink" href="/logout">Sign out</a>
+    </div>
+  </header>
+
+  {{if .NewAPIKey}}
+  <div class="card notice">
+    <strong>Site created.</strong> Server-side API key (shown once):
+    <code class="apikey">{{.NewAPIKey}}</code>
+  </div>
+  {{end}}
+
+  {{if not .GeoEnabled}}
+  <div class="card notice subtle">No GeoIP database loaded — country reports are hidden. Set <code>GLIMT_GEO_DB</code> to a DB-IP or GeoLite2 <code>.mmdb</code> file.</div>
+  {{end}}
+
+  <section class="card">
+    <h3>Add a website</h3>
+    <form class="row-form" method="post" action="/settings/sites/create">
+      <input type="text" name="name" placeholder="Name (e.g. my blog)" required>
+      <input type="text" name="domain" placeholder="Domain (e.g. example.com)">
+      <button type="submit">Create</button>
+    </form>
+  </section>
+
+  {{range .SiteRows}}
+  <section class="card site-card">
+    <div class="site-card-head">
+      <div>
+        <h3>{{.Site.Name}}</h3>
+        <span class="muted">{{if .Site.Domain}}{{.Site.Domain}}{{else}}no domain set{{end}}</span>
+      </div>
+      <form method="post" action="/settings/sites/delete" onsubmit="return confirm('Delete this site and all its data?')">
+        <input type="hidden" name="id" value="{{.Site.ID}}">
+        <button class="danger" type="submit">Delete</button>
+      </form>
+    </div>
+
+    <label class="field-label">Install snippet (add to your site's &lt;head&gt;)</label>
+    <pre class="snippet">{{.Snippet}}</pre>
+    <p class="muted small">Served first-party at <code>{{.ScriptURL}}</code> — no recognizable name for filter lists to match.</p>
+
+    <div class="site-actions">
+      <form method="post" action="/settings/sites/regen" onsubmit="return confirm('Rotate the script and collect paths? The old snippet will stop working.')">
+        <input type="hidden" name="id" value="{{.Site.ID}}">
+        <button type="submit">Rotate paths</button>
+      </form>
+      <form method="post" action="/settings/sites/public">
+        <input type="hidden" name="id" value="{{.Site.ID}}">
+        {{if .Site.Public}}
+        <input type="hidden" name="public" value="0">
+        <button type="submit">Make private</button>
+        {{else}}
+        <input type="hidden" name="public" value="1">
+        <button type="submit">Make public</button>
+        {{end}}
+      </form>
+      {{if .ShareURL}}
+      <a class="navlink" href="{{.ShareURL}}" target="_blank" rel="noopener">View public dashboard →</a>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <footer class="foot">powered by <strong>glimt</strong></footer>
+</div>
+{{end}}

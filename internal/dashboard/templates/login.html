@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="login-wrap">
+  <form class="login card" method="post" action="/login">
+    <div class="brand center">glimt<span class="dot">.</span></div>
+    <p class="login-sub">Sign in to your dashboard</p>
+    {{if .Error}}<div class="form-error">{{.Error}}</div>{{end}}
+    <label>Username<input type="text" name="username" autofocus autocomplete="username"></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password"></label>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{{end}}

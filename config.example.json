@@ -1,0 +1,11 @@
+{
+  "addr": ":8080",
+  "db_path": "glimt.db",
+  "geo_db_path": "",
+  "admin_user": "admin",
+  "admin_pass": "change-me",
+  "base_url": "https://stats.example.com",
+  "real_ip_header": "X-Forwarded-For",
+  "js_global": "glimt",
+  "session_ttl_hours": 168
+}
