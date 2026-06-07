@@ -1,7 +1,10 @@
 services:
   glimt:
-    build: .
-    # image: ghcr.io/klppl/glimt:latest   # or pull a prebuilt image
+    # Pull the image published by the GitHub Actions workflow.
+    # Pin a version (ghcr.io/klppl/glimt:v12) or track :latest.
+    image: ghcr.io/klppl/glimt:latest
+    # To build locally instead, comment out `image:` and uncomment:
+    # build: .
     restart: unless-stopped
     ports:
       - "8080:8080"

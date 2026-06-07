@@ -25,6 +25,10 @@ import (
 	"github.com/klppl/glimt/internal/web"
 )
 
+// version is set at build time via -ldflags "-X main.version=...". CI stamps it
+// with the incrementing build number; local builds report "dev".
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatalf("glimt: %v", err)
@@ -32,6 +36,8 @@ func main() {
 }
 
 func run() error {
+	log.Printf("glimt %s starting", version)
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err

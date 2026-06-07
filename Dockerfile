@@ -7,8 +7,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+# Version stamped into the binary (CI passes the incrementing build number).
+ARG VERSION=dev
 # Pure-Go (modernc sqlite) => CGO disabled => fully static binary.
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /glimt ./cmd/glimt
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION}" -o /glimt ./cmd/glimt
 
 # ---- runtime stage ----
 FROM gcr.io/distroless/static-debian12:nonroot
