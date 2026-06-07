@@ -1,142 +1,101 @@
 # glimt
 
-A self-hosted, privacy-respecting web analytics server in a single static Go
-binary. Cookieless, no persistent identifiers, no raw IP storage — and
-architecturally invisible to ad-block filter lists because everything is served
-first-party from your own domain with no recognizable names.
+Self-hosted, privacy-first web analytics in a single static Go binary + one
+SQLite file. Cookieless, no raw IP stored, and served first-party so ad-block
+lists can't match it.
 
-> Umami, but lighter, prettier, and unblockable by design.
+- **Cookieless IDs** — daily-rotating `hash(salt + site + ip + ua)`; IP used only
+  in-memory at ingest, never stored. Unlinkable across days.
+- **Unblockable by design** — tracking script and collector are same-origin at
+  randomized paths (`/s/<token>.js`, `/e/<token>`); ~640-byte snippet, no
+  recognizable names. Not fingerprinting.
+- **Light** — pure-Go SQLite (no cgo), WAL, batched writes, rollup tables.
+- Multi-site, single-admin dashboard (HTMX + inline-SVG, gruvbox light/dark),
+  public share links, custom events.
 
-## Highlights
+## Run with Docker
 
-- **Single static binary** (pure-Go SQLite via `modernc.org/sqlite`, no cgo). One
-  `.db` file, low RAM, fast cold start.
-- **Cookieless visitor IDs.** A daily visitor hash is derived from a
-  `salt + website + IP + user-agent`. The salt rotates every 24h and the old one
-  is discarded, so hashes are unlinkable across days and irreversible to an IP.
-  The raw IP is used only in-memory at ingest (hash + geo) and never stored.
-- **Block-resistant by architecture, not by fingerprinting.** The tracking
-  script and the collection endpoint are same-origin and served at
-  operator-randomized paths (`/s/<random>.js`, `/e/<random>`). No third-party
-  domain, no cookies, no `analytics.js`-style names — nothing for EasyList /
-  EasyPrivacy to match. No canvas fingerprinting, no supercookies, no
-  consent-defeating tricks.
-- **Tiny snippet** (~640 bytes) using `navigator.sendBeacon` with a
-  `fetch(keepalive)` fallback. SPA-aware (`pushState`/`popstate`).
-- **Scandinavian-minimal dashboard**, server-rendered with HTMX. Inline-SVG
-  charts, no SPA, no Chart.js bloat.
-- **Multi-tenant** with per-site randomized paths, per-site public share links,
-  single-admin auth.
-
-## Quick start
+```yaml
+# docker-compose.yml
+services:
+  glimt:
+    image: ghcr.io/klppl/glimt:latest
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      GLIMT_ADMIN_USER: admin
+      GLIMT_ADMIN_PASS: change-me            # creates the admin on first boot
+      GLIMT_BASE_URL: https://stats.example.com
+    volumes:
+      - glimt-data:/data                     # holds /data/glimt.db
+volumes:
+  glimt-data:
+```
 
 ```bash
-# Build
-CGO_ENABLED=0 go build -o glimt ./cmd/glimt
-
-# Run (first admin is created from these env vars)
-GLIMT_ADMIN_USER=admin GLIMT_ADMIN_PASS='a-strong-password' ./glimt
+docker compose up -d
 ```
 
-Open <http://localhost:8080>, sign in, add a website, and copy its install
-snippet into your site's `<head>`:
+Open the dashboard, sign in, add a site, and paste its snippet into your `<head>`:
 
 ```html
-<script defer src="https://stats.example.com/s/6652f5fef4c882c65f.js"></script>
+<script defer src="https://stats.example.com/s/<token>.js"></script>
 ```
 
-Track custom events from your site (the global name is configurable via
-`GLIMT_JS_GLOBAL`, default `glimt`):
+Custom events (global name configurable via `GLIMT_JS_GLOBAL`):
 
 ```js
 glimt('signup', { plan: 'pro' });
 ```
 
+> The image is `linux/amd64`. If the GHCR package is private, either make it
+> public (repo → Packages → settings) or `docker login ghcr.io` on the host.
+
 ## Configuration
 
-Config comes from environment variables (recommended) and/or a JSON file pointed
-to by `GLIMT_CONFIG`. Env vars always override the file. See
-[`config.example.json`](config.example.json).
+Env vars (prefixed `GLIMT_`) override an optional `GLIMT_CONFIG` JSON file.
 
-| Env var | Default | Description |
+| Var | Default | Description |
 |---|---|---|
 | `GLIMT_ADDR` | `:8080` | Listen address. |
-| `GLIMT_DB` | `glimt.db` | SQLite file path. |
-| `GLIMT_GEO_DB` | _(none)_ | Path to a DB-IP or GeoLite2 `.mmdb`. Omitted ⇒ country reports off. |
-| `GLIMT_ADMIN_USER` | _(none)_ | Bootstrap admin username (first boot). |
-| `GLIMT_ADMIN_PASS` | _(none)_ | Bootstrap admin password. Setting both on later boots resets the password. |
-| `GLIMT_BASE_URL` | _(none)_ | Public URL. Enables `Secure` cookies (https) and absolute snippet/share links. |
-| `GLIMT_REAL_IP_HEADER` | `X-Forwarded-For` | Header your proxy sets with the real client IP. |
-| `GLIMT_JS_GLOBAL` | `glimt` | Global function name the snippet exposes for custom events. |
-| `GLIMT_SESSION_TTL_HOURS` | `168` | Admin login session lifetime. |
+| `GLIMT_DB` | `glimt.db` | SQLite path (use `/data/glimt.db` in Docker). |
+| `GLIMT_ADMIN_USER` / `_PASS` | — | Admin, created on first boot. |
+| `GLIMT_BASE_URL` | — | Public URL; enables `Secure` cookies + absolute links. |
+| `GLIMT_GEO_DB` | — | DB-IP or GeoLite2 `.mmdb` for country reports. |
+| `GLIMT_REAL_IP_HEADER` | `X-Forwarded-For` | Header with the real client IP. |
+| `GLIMT_TRUSTED_PROXIES` | — | CIDRs / `cloudflare` / `private` allowed to set that header. |
+| `GLIMT_CF_COUNTRY` | `false` | Use Cloudflare `CF-IPCountry` for geo (no DB needed). |
+| `GLIMT_JS_GLOBAL` | `glimt` | Custom-event global name. |
 
-## Deploy behind your reverse proxy (first-party is the whole point)
+## Behind a reverse proxy
 
-glimt must be reached on **your own domain** for block-resistance to hold. Run it
-behind your proxy and forward the client IP. Example for nginx / npmplus:
+glimt must be reached on **your own domain** (first-party). Forward the client
+IP and only trust that header from your proxy.
 
-```nginx
-location ~ ^/(s|e)/ {                 # tracking script + collection endpoint
-    proxy_pass http://glimt:8080;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_set_header Host $host;
-}
-location / {                          # dashboard (restrict as you like)
-    proxy_pass http://glimt:8080;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_set_header Host $host;
-}
+**Cloudflare:**
+
+```bash
+GLIMT_REAL_IP_HEADER=CF-Connecting-IP
+GLIMT_TRUSTED_PROXIES=cloudflare,private   # drop ,private if CF hits glimt directly
+GLIMT_CF_COUNTRY=true
 ```
 
-- Behind **Cloudflare**, set `GLIMT_REAL_IP_HEADER=CF-Connecting-IP`.
-- With **CrowdSec**, keep the analytics paths out of aggressive bot rules — they
-  are legitimate same-origin POSTs.
-- Set `GLIMT_BASE_URL=https://stats.example.com` so cookies are `Secure` and the
-  install snippet shows absolute URLs.
-
-### Docker / Dockge
-
-A multi-stage build produces a distroless image; see [`Dockerfile`](Dockerfile)
-and [`docker-compose.yml`](docker-compose.yml). Mount a volume at `/data` for the
-DB (and optionally a `.mmdb` GeoIP file).
+`cloudflare` = CF edge ranges; add `private` when a local proxy (npmplus/nginx)
+sits in between. Without `GLIMT_TRUSTED_PROXIES`, the IP header is trusted
+unconditionally (fine for dev, not for production).
 
 ## GeoIP
 
-glimt reads either **DB-IP Lite** (no account needed) or **MaxMind GeoLite2**
-`.mmdb` files — same format. Download one, mount it, and point `GLIMT_GEO_DB` at
-it. The IP is resolved to country/region in-memory at ingest and immediately
-discarded.
+Country/region resolves in-memory from a local `.mmdb` (DB-IP Lite needs no
+account; GeoLite2 also works), or skip it entirely with `GLIMT_CF_COUNTRY=true`.
 
-## Architecture
+## Build from source
 
-- **Ingest hot path** (`/e/<token>`): validate → enrich (hash, geo, UA, referrer)
-  → enqueue → `204`. A single writer goroutine flushes batched transactions to
-  SQLite (WAL). The IP never reaches the writer.
-- **Sessions**: events are stitched into visits with a 30-minute inactivity
-  window (entry/exit page, bounce, navigation).
-- **Rollups**: a worker recomputes a trailing window each minute (recent hours
-  for the timeseries, today+yesterday for top-N dimensions). Older buckets are
-  final and never rewritten — no fragile incremental deltas.
-- **Query path**: timeseries and top-N read from rollup tables; accurate
-  range-unique visitor counts and session KPIs read from the session table.
-
-```
-internal/
-  config/   ingest/    (hot path: collector, enrich, visitor hash, batched writer)
-  store/    sites/     (tenant registry + token lookups)
-  geo/ ua/ referrer/   (enrichment)
-  rollup/   query/     (aggregation + read models)
-  auth/     dashboard/ (single-admin auth + HTMX UI, inline-SVG charts)
-  tracker/  web/       (snippet server + chi router)
+```bash
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o glimt ./cmd/glimt
 ```
 
-## Backups
+## Privacy
 
-Stop the process (or use the SQLite backup API / `VACUUM INTO`) and copy
-`glimt.db`. WAL mode means `glimt.db-wal` / `glimt.db-shm` may be present;
-checkpoint or copy all three for a hot copy.
-
-## Privacy stance
-
-No cookies. No localStorage. No persistent identifiers. No raw IP stored. No
-cross-day linkability. No fingerprinting. GDPR-friendly by construction.
+No cookies, no localStorage, no persistent IDs, no raw IP, no cross-day
+linkability, no fingerprinting. GDPR-friendly by construction.
