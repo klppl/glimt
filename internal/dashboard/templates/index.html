@@ -18,6 +18,7 @@
       {{end}}
     </div>
     <div class="topbar-right">
+      <button class="theme-toggle" type="button" onclick="glimtToggleTheme()" aria-label="Toggle dark mode"></button>
       {{if not .Public}}
       <span class="live" hx-get="/app/realtime?site={{.Site.ID}}" hx-trigger="load, every 15s">
         <i class="pulse"></i>{{.Realtime}}

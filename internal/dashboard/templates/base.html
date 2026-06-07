@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · glimt</title>
+<script>
+// Set the theme before paint to avoid a flash of the wrong palette.
+(function(){try{var t=localStorage.getItem('glimt-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+function glimtToggleTheme(){var d=document.documentElement;var t=d.getAttribute('data-theme')==='dark'?'light':'dark';d.setAttribute('data-theme',t);try{localStorage.setItem('glimt-theme',t);}catch(e){}}
+</script>
 <link rel="stylesheet" href="/assets/app.css">
 <script defer src="/assets/htmx.min.js"></script>
 </head>
