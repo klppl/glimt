@@ -78,17 +78,30 @@ func run() error {
 		return err
 	}
 
+	geoEnabled := g.Enabled() || cfg.CFCountry
+
 	q := query.New(db)
 	dash, err := dashboard.New(reg, q, a, dashboard.Config{
 		JSGlobal:   cfg.JSGlobal,
 		BaseURL:    strings.TrimRight(cfg.BaseURL, "/"),
-		GeoEnabled: g.Enabled(),
+		GeoEnabled: geoEnabled,
 	})
 	if err != nil {
 		return err
 	}
 
-	col := ingest.NewCollector(reg, in, cfg.RealIPHeader)
+	if cfg.CFCountry {
+		log.Printf("geo: using Cloudflare CF-IPCountry header")
+	}
+	if len(cfg.TrustedProxyNets) > 0 {
+		log.Printf("ingest: trusting real-IP header from %d proxy network(s) via %q",
+			len(cfg.TrustedProxyNets), cfg.RealIPHeader)
+	} else {
+		log.Printf("ingest: WARNING no GLIMT_TRUSTED_PROXIES set — the %q header is trusted unconditionally",
+			cfg.RealIPHeader)
+	}
+
+	col := ingest.NewCollector(reg, in, cfg.RealIPHeader, cfg.TrustedProxyNets, cfg.CFCountry)
 	trk := tracker.New(reg, cfg.JSGlobal)
 
 	ctx, cancel := context.WithCancel(context.Background())

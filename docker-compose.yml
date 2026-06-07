@@ -16,11 +16,19 @@ services:
       GLIMT_ADMIN_PASS: "change-me-now"
       # Public base URL (enables Secure cookies + absolute share/snippet links):
       GLIMT_BASE_URL: "https://stats.example.com"
-      # The header your reverse proxy sets with the real client IP.
-      # npmplus / nginx: X-Forwarded-For. Cloudflare: CF-Connecting-IP.
-      GLIMT_REAL_IP_HEADER: "X-Forwarded-For"
-      # Optional GeoIP (mount the file via the volume below):
-      GLIMT_GEO_DB: "/data/geo.mmdb"
+
+      # --- Behind Cloudflare ---
+      # CF sets the real client IP in CF-Connecting-IP:
+      GLIMT_REAL_IP_HEADER: "CF-Connecting-IP"
+      # Only honor that header from trusted upstreams. "cloudflare" = CF edge
+      # ranges; add "private" when a local proxy (npmplus in Docker) sits in
+      # between, so glimt trusts the proxy that forwards CF's header.
+      GLIMT_TRUSTED_PROXIES: "cloudflare,private"
+      # Use CF's CF-IPCountry header for country reports — no GeoIP DB needed:
+      GLIMT_CF_COUNTRY: "true"
+
+      # Optional local GeoIP instead of/in addition to CF (mount via volume):
+      # GLIMT_GEO_DB: "/data/geo.mmdb"
     volumes:
       - glimt-data:/data
       # Put your dbip-country-lite.mmdb or GeoLite2-City.mmdb at ./geo.mmdb:

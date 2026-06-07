@@ -97,6 +97,11 @@ path.
 - **Keep dependencies minimal** (currently chi, modernc/sqlite, maxminddb,
   mileusna/useragent). Password hashing uses stdlib `crypto/pbkdf2` (Go 1.24+) on
   purpose — don't pull in `x/crypto`.
+- **Real client IP** comes from `Collector.clientIP`: the configured
+  `GLIMT_REAL_IP_HEADER` is honored only when the TCP peer is in
+  `GLIMT_TRUSTED_PROXIES` (CIDRs / `cloudflare` / `private`); empty trust list ⇒
+  honored unconditionally (dev). Country can also come from Cloudflare's
+  `CF-IPCountry` (`GLIMT_CF_COUNTRY`), which overrides the mmdb lookup in `build`.
 - **Timestamps** are unix milliseconds (`ts`); day/hour buckets are integer
   divisions of ms. `version` is stamped via `-ldflags -X main.version`.
 - **CI** (`.github/workflows/docker.yml`) publishes `ghcr.io/klppl/glimt` on every

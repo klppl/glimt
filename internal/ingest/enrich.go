@@ -24,7 +24,9 @@ type Payload struct {
 
 // build converts a raw payload + request context into a storable Event. The IP
 // is consumed here (hash + geo) and intentionally not copied onto the Event.
-func (in *Ingestor) build(site *model.Site, p Payload, ip, userAgent, acceptLang string) *model.Event {
+// geoCountry, when non-empty (e.g. from Cloudflare's CF-IPCountry header), is
+// used directly and the local GeoIP lookup is skipped.
+func (in *Ingestor) build(site *model.Site, p Payload, ip, userAgent, acceptLang, geoCountry string) *model.Event {
 	now := time.Now().UnixMilli()
 	ev := &model.Event{
 		WebsiteID:   site.ID,
@@ -35,7 +37,11 @@ func (in *Ingestor) build(site *model.Site, p Payload, ip, userAgent, acceptLang
 	r := ua.Parse(userAgent)
 	ev.Browser, ev.BrowserVer, ev.OS, ev.Device = r.Browser, r.BrowserVer, r.OS, r.Device
 
-	ev.Country, ev.Region = in.geo.Lookup(ip)
+	if geoCountry != "" {
+		ev.Country = geoCountry // CF provides country only, no subdivision
+	} else {
+		ev.Country, ev.Region = in.geo.Lookup(ip)
+	}
 
 	if u, err := url.Parse(p.U); err == nil {
 		ev.URLPath = cleanPath(u.Path)

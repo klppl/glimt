@@ -20,10 +20,18 @@ type Collector struct {
 	reg          *sites.Registry
 	in           *Ingestor
 	realIPHeader string
+	trustedNets  []*net.IPNet
+	cfCountry    bool
 }
 
-func NewCollector(reg *sites.Registry, in *Ingestor, realIPHeader string) *Collector {
-	return &Collector{reg: reg, in: in, realIPHeader: realIPHeader}
+func NewCollector(reg *sites.Registry, in *Ingestor, realIPHeader string, trustedNets []*net.IPNet, cfCountry bool) *Collector {
+	return &Collector{
+		reg:          reg,
+		in:           in,
+		realIPHeader: realIPHeader,
+		trustedNets:  trustedNets,
+		cfCountry:    cfCountry,
+	}
 }
 
 func (c *Collector) Handle(w http.ResponseWriter, r *http.Request) {
@@ -47,16 +55,19 @@ func (c *Collector) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := c.clientIP(r)
-	ev := c.in.build(site, p, ip, r.UserAgent(), r.Header.Get("Accept-Language"))
+	ev := c.in.build(site, p, ip, r.UserAgent(), r.Header.Get("Accept-Language"), c.country(r))
 	c.in.Enqueue(ev)
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// clientIP reads the configured real-IP header (first hop) when present, else
-// falls back to the connection's remote address. The value is used transiently.
+// clientIP returns the connecting peer's address, or the configured real-IP
+// header when the peer is a trusted proxy. With no trusted proxies configured
+// the header is honored unconditionally (single-host / dev). The value is used
+// transiently for the daily hash + geo and is never stored.
 func (c *Collector) clientIP(r *http.Request) string {
-	if c.realIPHeader != "" {
+	peer := peerIP(r.RemoteAddr)
+	if c.realIPHeader != "" && c.trustPeer(peer) {
 		if v := r.Header.Get(c.realIPHeader); v != "" {
 			if i := strings.IndexByte(v, ','); i >= 0 {
 				v = v[:i]
@@ -64,9 +75,43 @@ func (c *Collector) clientIP(r *http.Request) string {
 			return strings.TrimSpace(v)
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return peer
+}
+
+func (c *Collector) trustPeer(ip string) bool {
+	if len(c.trustedNets) == 0 {
+		return true
+	}
+	pip := net.ParseIP(ip)
+	if pip == nil {
+		return false
+	}
+	for _, n := range c.trustedNets {
+		if n.Contains(pip) {
+			return true
+		}
+	}
+	return false
+}
+
+// country reads Cloudflare's CF-IPCountry header when enabled, filtering the
+// non-country sentinels CF uses (XX = unknown, T1 = Tor). Returns "" otherwise,
+// in which case the local GeoIP database (if any) is consulted instead.
+func (c *Collector) country(r *http.Request) string {
+	if !c.cfCountry {
+		return ""
+	}
+	cc := r.Header.Get("CF-IPCountry")
+	if len(cc) != 2 || cc == "XX" || cc == "T1" {
+		return ""
+	}
+	return cc
+}
+
+func peerIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
 	}
 	return host
 }
