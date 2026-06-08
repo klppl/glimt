@@ -40,7 +40,9 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	// Modest cache: snippet updates (and path rotations) propagate within ~an
+	// hour rather than a day, while still sparing the origin most hits.
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write([]byte(Render(site.CollectToken, h.jsGlobal, h.endpointBase(r))))
 }
 
@@ -57,14 +59,18 @@ func (h *Handler) endpointBase(r *http.Request) string {
 	return ""
 }
 
-// Render returns the snippet JS with the absolute collect endpoint and global
-// name substituted. base is a URL origin (e.g. "https://stats.example.com" or
-// "//stats.example.com"); empty yields a same-origin relative path.
+// Render returns the snippet JS with the collect token, fallback endpoint, and
+// global name substituted. At runtime the snippet first tries to locate its
+// endpoint relative to its own <script src> (so a first-party reverse proxy
+// "just works"); __EP__ is the absolute fallback used when that isn't possible.
+// base is a URL origin (e.g. "https://stats.example.com" or "//stats.example.com");
+// empty yields a same-origin relative path.
 func Render(collectToken, jsGlobal, base string) string {
 	if jsGlobal == "" {
 		jsGlobal = "glimt"
 	}
 	return strings.NewReplacer(
+		"__CT__", collectToken,
 		"__EP__", base+"/e/"+collectToken,
 		"__G__", jsGlobal,
 	).Replace(snippet)

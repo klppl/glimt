@@ -6,9 +6,11 @@ lists can't match it.
 
 - **Cookieless IDs** — daily-rotating `hash(salt + site + ip + ua)`; IP used only
   in-memory at ingest, never stored. Unlinkable across days.
-- **Unblockable by design** — tracking script and collector are same-origin at
-  randomized paths (`/s/<token>.js`, `/e/<token>`); ~640-byte snippet, no
-  recognizable names. Not fingerprinting.
+- **Unblockable by design** — tracking script and collector live at randomized
+  paths (`/s/<token>.js`, `/e/<token>`); ~640-byte snippet, no recognizable
+  names, posts via `fetch` (not `sendBeacon`, which ad-blockers kill as a
+  third-party `ping`). For full resistance, serve both **first-party** on the
+  tracked domain via a reverse proxy (see below). Not fingerprinting.
 - **Light** — pure-Go SQLite (no cgo), WAL, batched writes, rollup tables.
 - Multi-site, single-admin dashboard (HTMX + inline-SVG, gruvbox light/dark),
   public share links, custom events.
@@ -83,6 +85,49 @@ GLIMT_CF_COUNTRY=true
 `cloudflare` = CF edge ranges; add `private` when a local proxy (npmplus/nginx)
 sits in between. Without `GLIMT_TRUSTED_PROXIES`, the IP header is trusted
 unconditionally (fine for dev, not for production).
+
+## Truly unblockable: serve glimt first-party
+
+Loading the script from a **separate** host (e.g. `glimt.example.com` on a site
+at `example.com`) makes every request *third-party*. Ad-blockers don't need to
+recognize glimt by name — uBlock Origin's default lists already drop third-party
+beacons (`*$ping,3p`) and can target third-party requests generically. The
+snippet uses `fetch` instead of `sendBeacon` to dodge the `ping` rule, but the
+only way to be genuinely unmatchable is to serve the script and endpoint **from
+the tracked domain itself**, so they're first-party.
+
+Proxy a single non-obvious prefix on the tracked site to glimt, keeping the
+`/s/` and `/e/` sub-paths intact — the snippet locates its own endpoint relative
+to its `<script src>`, so it auto-posts back through the same first-party prefix.
+
+**nginx (on `example.com`):**
+
+```nginx
+location /_a/s/ {                       # the script
+    proxy_pass https://glimt.example.com/s/;
+    proxy_set_header Host glimt.example.com;
+}
+location /_a/e/ {                       # the collector
+    proxy_pass https://glimt.example.com/e/;
+    proxy_set_header Host glimt.example.com;
+    proxy_set_header X-Forwarded-For $remote_addr;
+}
+```
+
+**Cloudflare** (tracked site on Cloudflare): add a Worker/Origin Rule on
+`example.com` forwarding `/_a/s/*` → `glimt.example.com/s/*` and `/_a/e/*` →
+`glimt.example.com/e/*`.
+
+Install the **first-party** path on the page:
+
+```html
+<script defer src="/_a/s/<script_token>.js"></script>
+```
+
+The script derives its endpoint as `/_a/e/<collect_token>` from its own URL —
+same origin, no `3p`, no CORS, nothing for a filter list to match. (If
+`document.currentScript` is unavailable, it falls back to the absolute endpoint
+baked from `GLIMT_BASE_URL`.)
 
 ## GeoIP
 
