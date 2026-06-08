@@ -1,6 +1,8 @@
 // Package tracker serves the tiny, first-party tracking snippet from a
-// per-site randomized path. The snippet carries no recognizable names and posts
-// to the same-origin collect endpoint, so no ad-block filter list can match it.
+// per-site randomized path. The snippet carries no recognizable names. Its
+// collect endpoint is baked as an absolute URL pointing back at glimt, so it
+// works whether the script is served from the site's own domain (true
+// first-party via a reverse proxy) or from a dedicated analytics host.
 package tracker
 
 import (
@@ -19,13 +21,14 @@ var snippet string
 type Handler struct {
 	reg      *sites.Registry
 	jsGlobal string
+	baseURL  string // configured public base, e.g. https://stats.example.com ("" => derive from request)
 }
 
-func New(reg *sites.Registry, jsGlobal string) *Handler {
+func New(reg *sites.Registry, jsGlobal, baseURL string) *Handler {
 	if jsGlobal == "" {
 		jsGlobal = "glimt"
 	}
-	return &Handler{reg: reg, jsGlobal: jsGlobal}
+	return &Handler{reg: reg, jsGlobal: jsGlobal, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
@@ -38,17 +41,31 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	_, _ = w.Write([]byte(Render(site.CollectToken, h.jsGlobal)))
+	_, _ = w.Write([]byte(Render(site.CollectToken, h.jsGlobal, h.endpointBase(r))))
 }
 
-// Render returns the snippet JS with the collect endpoint and global name
-// substituted. Used both when serving the script and for install instructions.
-func Render(collectToken, jsGlobal string) string {
+// endpointBase resolves the origin the beacon should target. Prefer the
+// configured base URL; otherwise derive it from the host the script was fetched
+// from (protocol-relative so it matches the page's scheme).
+func (h *Handler) endpointBase(r *http.Request) string {
+	if h.baseURL != "" {
+		return h.baseURL
+	}
+	if r.Host != "" {
+		return "//" + r.Host
+	}
+	return ""
+}
+
+// Render returns the snippet JS with the absolute collect endpoint and global
+// name substituted. base is a URL origin (e.g. "https://stats.example.com" or
+// "//stats.example.com"); empty yields a same-origin relative path.
+func Render(collectToken, jsGlobal, base string) string {
 	if jsGlobal == "" {
 		jsGlobal = "glimt"
 	}
 	return strings.NewReplacer(
-		"__EP__", "/e/"+collectToken,
+		"__EP__", base+"/e/"+collectToken,
 		"__G__", jsGlobal,
 	).Replace(snippet)
 }

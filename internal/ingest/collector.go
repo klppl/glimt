@@ -34,7 +34,16 @@ func NewCollector(reg *sites.Registry, in *Ingestor, realIPHeader string, truste
 	}
 }
 
+// Preflight answers CORS preflight (only sent if a client uses a non-simple
+// request; normal sendBeacon/fetch text/plain posts skip it).
+func (c *Collector) Preflight(w http.ResponseWriter, r *http.Request) {
+	corsHeaders(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (c *Collector) Handle(w http.ResponseWriter, r *http.Request) {
+	corsHeaders(w)
+
 	tok := chi.URLParam(r, "token")
 	site, ok := c.reg.ByCollect(tok)
 	if !ok {
@@ -106,6 +115,18 @@ func (c *Collector) country(r *http.Request) string {
 		return ""
 	}
 	return cc
+}
+
+// corsHeaders allows the cross-origin POST when the script is served from a
+// different origin than the tracked page (e.g. a dedicated analytics host). The
+// response carries no data, so a wildcard origin is safe and no credentials are
+// used.
+func corsHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", "Content-Type")
+	h.Set("Access-Control-Max-Age", "86400")
 }
 
 func peerIP(remoteAddr string) string {

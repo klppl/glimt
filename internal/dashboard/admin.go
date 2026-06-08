@@ -34,11 +34,16 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
-	h.renderSettings(w, "")
+	h.renderSettings(w, r, "")
 }
 
-func (h *Handlers) renderSettings(w http.ResponseWriter, newAPIKey string) {
+func (h *Handlers) renderSettings(w http.ResponseWriter, r *http.Request, newAPIKey string) {
+	// Prefer the configured base URL; otherwise derive it from the request host
+	// so the copy-paste install snippet is always a working absolute URL.
 	base := h.cfg.BaseURL
+	if base == "" {
+		base = "//" + r.Host
+	}
 	var rows []siteSetting
 	for _, s := range h.reg.All() {
 		ss := siteSetting{
@@ -77,7 +82,7 @@ func (h *Handlers) SiteCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.renderSettings(w, apiKey)
+	h.renderSettings(w, r, apiKey)
 }
 
 func (h *Handlers) SiteDelete(w http.ResponseWriter, r *http.Request) {

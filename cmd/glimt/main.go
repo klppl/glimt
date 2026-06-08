@@ -102,7 +102,7 @@ func run() error {
 	}
 
 	col := ingest.NewCollector(reg, in, cfg.RealIPHeader, cfg.TrustedProxyNets, cfg.CFCountry)
-	trk := tracker.New(reg, cfg.JSGlobal)
+	trk := tracker.New(reg, cfg.JSGlobal, cfg.BaseURL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	rw := rollup.New(db)

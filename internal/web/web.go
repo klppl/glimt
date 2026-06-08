@@ -26,6 +26,7 @@ func Router(col *ingest.Collector, trk *tracker.Handler, dash *dashboard.Handler
 	// Ingest hot path — first-party, randomized, signature-free.
 	r.Get("/s/{token}.js", trk.Serve)
 	r.Post("/e/{token}", col.Handle)
+	r.Options("/e/{token}", col.Preflight)
 
 	// Static assets (CSS, htmx).
 	r.Handle("/assets/*", dashboard.AssetsHandler())
