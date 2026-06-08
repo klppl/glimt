@@ -4,6 +4,7 @@ package dashboard
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -55,7 +56,7 @@ func (h *Handlers) funcMap() template.FuncMap {
 
 func (h *Handlers) parseTemplates() error {
 	h.pages = map[string]*template.Template{}
-	for _, page := range []string{"index", "login", "settings"} {
+	for _, page := range []string{"home", "index", "login", "settings"} {
 		t, err := template.New("base.html").Funcs(h.funcMap()).
 			ParseFS(templatesFS, "templates/base.html", "templates/"+page+".html")
 		if err != nil {
@@ -105,6 +106,15 @@ type siteSetting struct {
 	ShareURL  string
 }
 
+// siteCard is one tile on the overview landing page.
+type siteCard struct {
+	Name     string
+	Href     string
+	Summary  query.Summary
+	Realtime int
+	Combined bool
+}
+
 type viewData struct {
 	Title      string
 	Sites      []*model.Site
@@ -122,6 +132,7 @@ type viewData struct {
 	NewAPIKey  string
 	BaseURL    string
 	Error      string
+	Cards      []siteCard // overview landing page tiles
 }
 
 // ---- range handling ----
@@ -160,6 +171,13 @@ func rangeOptions(sel string) []rangeOpt {
 
 // ---- handlers ----
 
+// allSitesID is the sentinel site ID for the combined "All websites" view; the
+// query layer treats 0 as "every site". Real sites always have positive rowids.
+const allSitesID int64 = 0
+
+// aggregateSite is the pseudo-site selected when viewing all websites combined.
+func aggregateSite() *model.Site { return &model.Site{ID: allSitesID, Name: "All websites"} }
+
 func (h *Handlers) currentSite(r *http.Request) *model.Site {
 	all := h.reg.All()
 	if len(all) == 0 {
@@ -167,6 +185,9 @@ func (h *Handlers) currentSite(r *http.Request) *model.Site {
 	}
 	if v := r.URL.Query().Get("site"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			if id == allSitesID {
+				return aggregateSite()
+			}
 			if s, ok := h.reg.ByID(id); ok {
 				return s
 			}
@@ -264,7 +285,14 @@ func buildPanel(title, metric string, rows []query.Row, disp func(string) string
 	return p
 }
 
+// Index serves the overview landing page (a tile per site plus an "All
+// combined" tile) at "/", and a single site's detailed dashboard when a "site"
+// query param is present (a tile was clicked).
 func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
+	if !r.URL.Query().Has("site") {
+		h.home(w, r)
+		return
+	}
 	site := h.currentSite(r)
 	if site == nil {
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
@@ -278,6 +306,60 @@ func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
 	vd.Title = site.Name
 	vd.Sites = h.reg.All()
 	h.render(w, "index", vd)
+}
+
+// home renders the overview grid: one summary tile per site, plus a leading
+// "All combined" tile (site 0) when more than one site exists.
+func (h *Handlers) home(w http.ResponseWriter, r *http.Request) {
+	all := h.reg.All()
+	if len(all) == 0 {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
+	fromMs, toMs, _, norm := resolveRange(r.URL.Query().Get("range"))
+	now := time.Now().UnixMilli()
+
+	card := func(id int64, name string, combined bool) (siteCard, error) {
+		sum, err := h.q.Summary(id, fromMs, toMs)
+		if err != nil {
+			return siteCard{}, err
+		}
+		rt, err := h.q.Realtime(id, now)
+		if err != nil {
+			return siteCard{}, err
+		}
+		return siteCard{
+			Name:     name,
+			Href:     fmt.Sprintf("/?site=%d&range=%s", id, norm),
+			Summary:  sum,
+			Realtime: rt,
+			Combined: combined,
+		}, nil
+	}
+
+	vd := &viewData{
+		Title:      "Overview",
+		Range:      norm,
+		Ranges:     rangeOptions(norm),
+		GeoEnabled: h.cfg.GeoEnabled,
+	}
+	if len(all) > 1 {
+		c, err := card(allSitesID, "All combined", true)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		vd.Cards = append(vd.Cards, c)
+	}
+	for _, s := range all {
+		c, err := card(s.ID, s.Name, false)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		vd.Cards = append(vd.Cards, c)
+	}
+	h.render(w, "home", vd)
 }
 
 // Realtime is an HTMX fragment polled by the dashboard.

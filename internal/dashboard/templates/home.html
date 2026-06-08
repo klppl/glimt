@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="wrap">
+  <header class="topbar">
+    <a class="brand" href="/">glimt<span class="dot">.</span></a>
+    <div class="topbar-mid"></div>
+    <div class="topbar-right">
+      <button class="theme-toggle" type="button" onclick="glimtToggleTheme()" aria-label="Toggle dark mode"></button>
+      <a class="navlink" href="/settings">Settings</a>
+      <a class="navlink" href="/logout">Sign out</a>
+    </div>
+  </header>
+
+  <nav class="ranges">
+    {{range .Ranges}}
+    <a class="range {{if .Selected}}active{{end}}" href="/?range={{.Key}}">{{.Label}}</a>
+    {{end}}
+  </nav>
+
+  <section class="site-cards">
+    {{range .Cards}}
+    <a class="card site-card{{if .Combined}} combined{{end}}" href="{{.Href}}">
+      <div class="site-card-head">
+        <h3>{{.Name}}</h3>
+        <span class="live"><i class="pulse"></i>{{.Realtime}}</span>
+      </div>
+      <div class="site-card-stats">
+        <div><span class="kpi-val">{{num .Summary.Visitors}}</span><span class="kpi-label">Visitors</span></div>
+        <div><span class="kpi-val">{{num .Summary.Pageviews}}</span><span class="kpi-label">Pageviews</span></div>
+        <div><span class="kpi-val">{{pct .Summary.BounceRate}}</span><span class="kpi-label">Bounce</span></div>
+      </div>
+    </a>
+    {{end}}
+  </section>
+
+  <footer class="foot">powered by <strong>glimt</strong></footer>
+</div>
+{{end}}

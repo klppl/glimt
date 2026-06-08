@@ -1,21 +1,9 @@
 {{define "content"}}
 <div class="wrap">
   <header class="topbar">
-    <div class="brand">glimt<span class="dot">.</span></div>
+    {{if .Public}}<div class="brand">glimt<span class="dot">.</span></div>{{else}}<a class="brand" href="/">glimt<span class="dot">.</span></a>{{end}}
     <div class="topbar-mid">
-      {{if not .Public}}
-      <form class="site-switch" method="get" action="/">
-        <select name="site" onchange="this.form.submit()">
-          {{$cur := .Site}}
-          {{range .Sites}}
-          <option value="{{.ID}}" {{if eq .ID $cur.ID}}selected{{end}}>{{.Name}}</option>
-          {{end}}
-        </select>
-        <input type="hidden" name="range" value="{{.Range}}">
-      </form>
-      {{else}}
       <div class="site-name">{{.Site.Name}}</div>
-      {{end}}
     </div>
     <div class="topbar-right">
       <button class="theme-toggle" type="button" onclick="glimtToggleTheme()" aria-label="Toggle dark mode"></button>
@@ -23,6 +11,7 @@
       <span class="live" hx-get="/app/realtime?site={{.Site.ID}}" hx-trigger="load, every 15s">
         <i class="pulse"></i>{{.Realtime}}
       </span>
+      <a class="navlink" href="/">Start</a>
       <a class="navlink" href="/settings">Settings</a>
       <a class="navlink" href="/logout">Sign out</a>
       {{else}}

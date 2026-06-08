@@ -38,16 +38,28 @@ type Row struct {
 	Visitors int
 }
 
+// scope builds the website_id predicate for a query. A siteID of 0 means the
+// combined "all websites" view and matches every row; any positive ID keeps the
+// literal `website_id = ?` form so SQLite still uses the website_id index on the
+// common single-site path. Real sites always have positive rowids.
+func scope(siteID int64) (clause string, args []any) {
+	if siteID == 0 {
+		return "1=1", nil
+	}
+	return "website_id = ?", []any{siteID}
+}
+
 // Summary computes headline KPIs for a site over [fromMs, toMs).
 func (q *Querier) Summary(siteID, fromMs, toMs int64) (Summary, error) {
 	var s Summary
+	where, args := scope(siteID)
 
 	fromHour := fromMs / msPerHour
 	toHour := toMs / msPerHour // inclusive: the current (partial) hour bucket counts
 	if err := q.db.R.QueryRow(
 		`SELECT COALESCE(SUM(pageviews),0) FROM rollup_stats
-		 WHERE website_id = ? AND bucket_hour >= ? AND bucket_hour <= ?`,
-		siteID, fromHour, toHour).Scan(&s.Pageviews); err != nil {
+		 WHERE `+where+` AND bucket_hour >= ? AND bucket_hour <= ?`,
+		append(args, fromHour, toHour)...).Scan(&s.Pageviews); err != nil {
 		return s, err
 	}
 
@@ -55,8 +67,8 @@ func (q *Querier) Summary(siteID, fromMs, toMs int64) (Summary, error) {
 		`SELECT COUNT(DISTINCT visitor_hash), COUNT(*),
 		        COALESCE(AVG(is_bounce),0), COALESCE(AVG(last_seen_at - started_at),0)
 		 FROM session
-		 WHERE website_id = ? AND started_at >= ? AND started_at < ?`,
-		siteID, fromMs, toMs).Scan(&s.Visitors, &s.Visits, &s.BounceRate, &s.AvgDuration); err != nil {
+		 WHERE `+where+` AND started_at >= ? AND started_at < ?`,
+		append(args, fromMs, toMs)...).Scan(&s.Visitors, &s.Visits, &s.BounceRate, &s.AvgDuration); err != nil {
 		return s, err
 	}
 	s.AvgDuration /= 1000 // ms -> seconds
@@ -73,6 +85,7 @@ func (q *Querier) TimeSeries(siteID, fromMs, toMs int64, interval string) ([]Poi
 	// Align the start down to the bucket boundary.
 	start := (fromMs / step) * step
 	counts := map[int64]*Point{}
+	where, args := scope(siteID)
 
 	var rows interface {
 		Next() bool
@@ -85,19 +98,20 @@ func (q *Querier) TimeSeries(siteID, fromMs, toMs int64, interval string) ([]Poi
 		r, err := q.db.R.Query(
 			`SELECT (bucket_hour/24)*?, SUM(pageviews), SUM(visitors)
 			 FROM rollup_stats
-			 WHERE website_id = ? AND bucket_hour >= ? AND bucket_hour <= ?
+			 WHERE `+where+` AND bucket_hour >= ? AND bucket_hour <= ?
 			 GROUP BY bucket_hour/24`,
-			msPerDay, siteID, fromMs/msPerHour, toMs/msPerHour)
+			append([]any{msPerDay}, append(args, fromMs/msPerHour, toMs/msPerHour)...)...)
 		if err != nil {
 			return nil, err
 		}
 		rows = r
 	} else {
 		r, err := q.db.R.Query(
-			`SELECT bucket_hour*?, pageviews, visitors
+			`SELECT bucket_hour*?, SUM(pageviews), SUM(visitors)
 			 FROM rollup_stats
-			 WHERE website_id = ? AND bucket_hour >= ? AND bucket_hour <= ?`,
-			msPerHour, siteID, fromMs/msPerHour, toMs/msPerHour)
+			 WHERE `+where+` AND bucket_hour >= ? AND bucket_hour <= ?
+			 GROUP BY bucket_hour`,
+			append([]any{msPerHour}, append(args, fromMs/msPerHour, toMs/msPerHour)...)...)
 		if err != nil {
 			return nil, err
 		}
@@ -132,12 +146,13 @@ func (q *Querier) TimeSeries(siteID, fromMs, toMs int64, interval string) ([]Poi
 func (q *Querier) Top(siteID int64, dimension string, fromMs, toMs int64, limit int) ([]Row, error) {
 	fromDay := fromMs / msPerDay
 	toDay := toMs / msPerDay
+	where, args := scope(siteID)
 	rows, err := q.db.R.Query(
 		`SELECT value, SUM(pageviews) AS c, SUM(visitors) AS v
 		 FROM rollup_dim
-		 WHERE website_id = ? AND dimension = ? AND bucket_day >= ? AND bucket_day <= ?
+		 WHERE `+where+` AND dimension = ? AND bucket_day >= ? AND bucket_day <= ?
 		 GROUP BY value ORDER BY c DESC LIMIT ?`,
-		siteID, dimension, fromDay, toDay, limit)
+		append(args, dimension, fromDay, toDay, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,9 +172,10 @@ func (q *Querier) Top(siteID int64, dimension string, fromMs, toMs int64, limit 
 // Realtime counts distinct visitors active in the last 5 minutes.
 func (q *Querier) Realtime(siteID, nowMs int64) (int, error) {
 	var n int
+	where, args := scope(siteID)
 	err := q.db.R.QueryRow(
 		`SELECT COUNT(DISTINCT visitor_hash) FROM event
-		 WHERE website_id = ? AND ts > ?`,
-		siteID, nowMs-5*60*1000).Scan(&n)
+		 WHERE `+where+` AND ts > ?`,
+		append(args, nowMs-5*60*1000)...).Scan(&n)
 	return n, err
 }

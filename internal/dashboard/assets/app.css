@@ -60,7 +60,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 
 /* top bar */
 .topbar{display:flex;align-items:center;gap:1rem;margin-bottom:1.4rem}
-.brand{font-weight:600;font-size:1.25rem;letter-spacing:-.3px;color:var(--strong)}
+.brand{font-weight:600;font-size:1.25rem;letter-spacing:-.3px;color:var(--strong);text-decoration:none}
 .brand .dot{color:var(--accent)}
 .brand.center{text-align:center;display:block;font-size:1.6rem}
 .topbar-mid{flex:1;display:flex;align-items:center}
@@ -154,6 +154,18 @@ button.danger:hover{border-color:var(--danger)}
 
 .foot{margin-top:2rem;text-align:center;color:var(--muted);font-size:.8rem}
 .foot strong{font-weight:600;color:var(--ink)}
+
+/* overview landing grid */
+.site-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.9rem}
+.site-card{display:block;text-decoration:none;color:inherit;transition:border-color .12s,transform .12s}
+.site-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.site-card.combined{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.site-card-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.9rem}
+.site-card-head h3{font-size:1rem;font-weight:600;color:var(--strong);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.site-card-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
+.site-card-stats>div{display:flex;flex-direction:column;gap:.15rem}
+.site-card-stats .kpi-val{font-size:1.25rem}
+.site-card-stats .kpi-label{font-size:.72rem}
 
 @media(max-width:820px){
   .kpis{grid-template-columns:repeat(2,1fr)}
