@@ -27,6 +27,8 @@ func Router(col *ingest.Collector, trk *tracker.Handler, dash *dashboard.Handler
 	r.Get("/s/{token}.js", trk.Serve)
 	r.Post("/e/{token}", col.Handle)
 	r.Options("/e/{token}", col.Preflight)
+	r.Get("/pixel/{token}.gif", col.HandlePixel)
+	r.Get("/pixel/{token}", col.HandlePixel)
 
 	// Static assets (CSS, htmx).
 	r.Handle("/assets/*", dashboard.AssetsHandler())
@@ -44,11 +46,16 @@ func Router(col *ingest.Collector, trk *tracker.Handler, dash *dashboard.Handler
 		pr.Use(a.Require)
 		pr.Get("/", dash.Index)
 		pr.Get("/app/realtime", dash.Realtime)
+		pr.Get("/app/export", dash.Export)
 		pr.Get("/settings", dash.Settings)
 		pr.Post("/settings/sites/create", dash.SiteCreate)
 		pr.Post("/settings/sites/delete", dash.SiteDelete)
 		pr.Post("/settings/sites/regen", dash.SiteRegen)
 		pr.Post("/settings/sites/public", dash.SitePublic)
+		pr.Post("/settings/users/create", dash.UserCreate)
+		pr.Post("/settings/users/delete", dash.UserDelete)
+		pr.Post("/app/funnels/create", dash.FunnelCreate)
+		pr.Post("/app/funnels/delete", dash.FunnelDelete)
 	})
 
 	return r

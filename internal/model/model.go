@@ -38,6 +38,8 @@ type Event struct {
 	Type        int
 	Name        string
 	URLPath     string
+	PageTitle   string
+	Hostname    string
 	Referrer    string
 	RefClass    int
 	RefSource   string
@@ -56,6 +58,16 @@ type Event struct {
 	Language     string
 	Country      string
 	Region       string
+	City         string
+
+	// Core Web Vitals
+	LCP  float64
+	INP  float64
+	CLS  float64
+	TTFB float64
+
+	// Numerical value / revenue
+	Val float64
 
 	Props map[string]string
 }

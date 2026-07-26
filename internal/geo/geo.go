@@ -42,25 +42,31 @@ type record struct {
 	Subdivisions []struct {
 		ISOCode string `maxminddb:"iso_code"`
 	} `maxminddb:"subdivisions"`
+	City struct {
+		Names map[string]string `maxminddb:"names"`
+	} `maxminddb:"city"`
 }
 
-// Lookup returns ISO country and first subdivision (region) codes. The IP is
+// Lookup returns ISO country, first subdivision (region) code, and city name. The IP is
 // never stored by callers; it lives only for the duration of this call.
-func (g *Geo) Lookup(ipStr string) (country, region string) {
+func (g *Geo) Lookup(ipStr string) (country, region, city string) {
 	if g.r == nil || ipStr == "" {
-		return "", ""
+		return "", "", ""
 	}
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return "", ""
+		return "", "", ""
 	}
 	var rec record
 	if err := g.r.Lookup(ip, &rec); err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	country = rec.Country.ISOCode
 	if len(rec.Subdivisions) > 0 {
 		region = rec.Subdivisions[0].ISOCode
 	}
-	return country, region
+	if name, ok := rec.City.Names["en"]; ok {
+		city = name
+	}
+	return country, region, city
 }

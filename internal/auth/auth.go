@@ -38,6 +38,12 @@ func New(db *store.DB, ttl time.Duration, secure bool) *Auth {
 	return &Auth{db: db, ttl: ttl, secure: secure}
 }
 
+type User struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
 // EnsureAdmin creates the admin account if none exists yet. If an admin already
 // exists and a password is supplied, it is updated (lets you reset via env).
 func (a *Auth) EnsureAdmin(username, password string) error {
@@ -49,7 +55,7 @@ func (a *Auth) EnsureAdmin(username, password string) error {
 		if username == "" || password == "" {
 			return errors.New("no admin exists and GLIMT_ADMIN_USER/GLIMT_ADMIN_PASS are not set")
 		}
-		_, err := a.db.W.Exec(`INSERT INTO admin(username, pw_hash) VALUES(?,?)`,
+		_, err := a.db.W.Exec(`INSERT INTO admin(username, pw_hash, role) VALUES(?,?,'admin')`,
 			username, hashPassword(password))
 		return err
 	}
@@ -63,8 +69,9 @@ func (a *Auth) EnsureAdmin(username, password string) error {
 
 // Login verifies credentials and returns a fresh session token.
 func (a *Auth) Login(username, password string) (string, error) {
+	var uid int64
 	var stored string
-	err := a.db.R.QueryRow(`SELECT pw_hash FROM admin WHERE username = ?`, username).Scan(&stored)
+	err := a.db.R.QueryRow(`SELECT id, pw_hash FROM admin WHERE username = ?`, username).Scan(&uid, &stored)
 	if err == sql.ErrNoRows {
 		return "", ErrInvalid
 	}
@@ -78,10 +85,50 @@ func (a *Auth) Login(username, password string) (string, error) {
 	tok := randToken()
 	expires := time.Now().Add(a.ttl).UnixMilli()
 	if _, err := a.db.W.Exec(
-		`INSERT INTO admin_session(token, expires_at) VALUES(?,?)`, tok, expires); err != nil {
+		`INSERT INTO admin_session(token, expires_at, user_id) VALUES(?,?,?)`, tok, expires, uid); err != nil {
 		return "", err
 	}
 	return tok, nil
+}
+
+func (a *Auth) ListUsers() ([]User, error) {
+	rows, err := a.db.R.Query(`SELECT id, username, COALESCE(role, 'admin') FROM admin ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (a *Auth) CreateUser(username, password, role string) error {
+	if username == "" || password == "" {
+		return errors.New("username and password required")
+	}
+	if role == "" {
+		role = "admin"
+	}
+	_, err := a.db.W.Exec(`INSERT INTO admin(username, pw_hash, role) VALUES(?,?,?)`,
+		username, hashPassword(password), role)
+	return err
+}
+
+func (a *Auth) DeleteUser(id int64) error {
+	var count int
+	_ = a.db.R.QueryRow(`SELECT COUNT(*) FROM admin`).Scan(&count)
+	if count <= 1 {
+		return errors.New("cannot delete the last admin user")
+	}
+	_, err := a.db.W.Exec(`DELETE FROM admin WHERE id = ?`, id)
+	return err
 }
 
 func (a *Auth) Logout(token string) {

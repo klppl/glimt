@@ -20,13 +20,22 @@
     </div>
   </header>
 
-  <nav class="ranges">
-    {{$base := "/"}}{{$q := printf "?site=%d&range=" .Site.ID}}
-    {{if .Public}}{{$base = printf "/p/%s" .ShareToken}}{{$q = "?range="}}{{end}}
-    {{range .Ranges}}
-    <a class="range {{if .Selected}}active{{end}}" href="{{$base}}{{$q}}{{.Key}}">{{.Label}}</a>
+  <div class="top-controls" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.4rem;flex-wrap:wrap;gap:0.5rem;">
+    <nav class="ranges" style="margin-bottom:0;">
+      {{$base := "/"}}{{$q := printf "?site=%d&range=" .Site.ID}}
+      {{if .Public}}{{$base = printf "/p/%s" .ShareToken}}{{$q = "?range="}}{{end}}
+      {{range .Ranges}}
+      <a class="range {{if .Selected}}active{{end}}" href="{{$base}}{{$q}}{{.Key}}">{{.Label}}</a>
+      {{end}}
+    </nav>
+    {{if not .Public}}
+    <div class="export-actions" style="display:flex;gap:0.5rem;align-items:center;">
+      <span class="small muted">Export:</span>
+      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}&format=csv" download>CSV</a>
+      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}&format=json" download>JSON</a>
+    </div>
     {{end}}
-  </nav>
+  </div>
 
   <section class="kpis">
     <div class="kpi"><span class="kpi-label">Visitors</span><span class="kpi-val">{{num .Summary.Visitors}}</span></div>
@@ -34,11 +43,68 @@
     <div class="kpi"><span class="kpi-label">Visits</span><span class="kpi-val">{{num .Summary.Visits}}</span></div>
     <div class="kpi"><span class="kpi-label">Bounce rate</span><span class="kpi-val">{{pct .Summary.BounceRate}}</span></div>
     <div class="kpi"><span class="kpi-label">Avg. visit</span><span class="kpi-val">{{dur .Summary.AvgDuration}}</span></div>
+    {{if gt .Summary.Revenue 0.0}}
+    <div class="kpi"><span class="kpi-label">Revenue / Value</span><span class="kpi-val">${{printf "%.2f" .Summary.Revenue}}</span></div>
+    {{end}}
   </section>
+
+  {{if gt .Vitals.Count 0}}
+  <section class="vitals-bar card" style="margin-bottom:1.2rem;padding:0.8rem 1rem;">
+    <h3 style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Core Web Vitals</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.8rem;">
+      <div><span class="kpi-label">LCP</span> <strong style="display:block;font-size:1.1rem;color:var(--strong);">{{printf "%.0f" .Vitals.LCP}} ms</strong></div>
+      <div><span class="kpi-label">INP</span> <strong style="display:block;font-size:1.1rem;color:var(--strong);">{{printf "%.0f" .Vitals.INP}} ms</strong></div>
+      <div><span class="kpi-label">CLS</span> <strong style="display:block;font-size:1.1rem;color:var(--strong);">{{printf "%.3f" .Vitals.CLS}}</strong></div>
+      <div><span class="kpi-label">TTFB</span> <strong style="display:block;font-size:1.1rem;color:var(--strong);">{{printf "%.0f" .Vitals.TTFB}} ms</strong></div>
+    </div>
+  </section>
+  {{end}}
 
   <section class="card chart-card">
     {{.Chart}}
   </section>
+
+  {{if not .Public}}
+  <section class="card funnel-card" style="margin-bottom:1.2rem;padding:1.1rem 1.2rem;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.8rem;">
+      <h3 style="margin:0;">Conversion Funnel Analysis</h3>
+      {{if .ActiveFunnel}}
+      <form method="post" action="/app/funnels/delete">
+        <input type="hidden" name="id" value="{{.ActiveFunnel.ID}}">
+        <input type="hidden" name="site_id" value="{{$.Site.ID}}">
+        <button class="danger small" type="submit" style="padding:0.2rem 0.5rem;font-size:0.75rem;">Delete Funnel</button>
+      </form>
+      {{end}}
+    </div>
+
+    {{if .ActiveFunnel}}
+    <h4 style="margin:0 0 0.8rem;color:var(--muted);font-weight:500;font-size:0.9rem;">Funnel: {{.ActiveFunnel.Name}}</h4>
+    <div style="display:flex;gap:0.8rem;align-items:stretch;flex-wrap:wrap;">
+      {{range $i, $step := .FunnelData}}
+      <div style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:0.8rem;position:relative;">
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem;">Step {{$i | add1}}</div>
+        <div style="font-weight:600;font-size:0.95rem;color:var(--strong);word-break:break-all;margin-bottom:0.4rem;">{{$step.Step}}</div>
+        <div style="font-size:1.3rem;font-weight:600;color:var(--accent);">{{num $step.Count}}</div>
+        <div style="font-size:0.8rem;color:var(--muted);">{{printf "%.1f" $step.Percentage}}% conversion</div>
+        {{if gt $i 0}}
+        <div style="font-size:0.75rem;color:var(--danger);margin-top:0.3rem;">-{{printf "%.1f" $step.Dropoff}}% drop-off</div>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="muted small" style="margin-bottom:0.8rem;">No conversion funnel defined yet. Create one below to track user checkout / signup flow conversion rates.</p>
+    <form method="post" action="/app/funnels/create" class="row-form">
+      <input type="hidden" name="site_id" value="{{.Site.ID}}">
+      <input type="text" name="name" placeholder="Funnel Name (e.g. Checkout Flow)" required style="flex:1;">
+      <input type="text" name="step1" placeholder="Step 1 Path or event:name (e.g. /)" required style="flex:1;">
+      <input type="text" name="step2" placeholder="Step 2 Path or event:name (e.g. /pricing)" required style="flex:1;">
+      <input type="text" name="step3" placeholder="Step 3 Path or event:signup (optional)" style="flex:1;">
+      <button type="submit">Create Funnel</button>
+    </form>
+    {{end}}
+  </section>
+  {{end}}
 
   <section class="panels">
     {{range .Panels}}

@@ -4,6 +4,8 @@ package dashboard
 
 import (
 	"embed"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -51,6 +53,7 @@ func (h *Handlers) funcMap() template.FuncMap {
 		"dur":     fmtDuration,
 		"flag":    flag,
 		"country": countryName,
+		"add1":    func(i int) int { return i + 1 },
 	}
 }
 
@@ -99,13 +102,6 @@ type panel struct {
 	Rows   []barRow
 }
 
-type siteSetting struct {
-	Site      *model.Site
-	ScriptURL string
-	Snippet   string
-	ShareURL  string
-}
-
 // siteCard is one tile on the overview landing page.
 type siteCard struct {
 	Name     string
@@ -116,23 +112,28 @@ type siteCard struct {
 }
 
 type viewData struct {
-	Title      string
-	Sites      []*model.Site
-	Site       *model.Site
-	SiteRows   []siteSetting
-	Range      string
-	Ranges     []rangeOpt
-	Summary    query.Summary
-	Chart      template.HTML
-	Panels     []panel
-	Realtime   int
-	GeoEnabled bool
-	Public     bool
-	ShareToken string
-	NewAPIKey  string
-	BaseURL    string
-	Error      string
-	Cards      []siteCard // overview landing page tiles
+	Title        string
+	Sites        []*model.Site
+	Site         *model.Site
+	SiteRows     []siteSetting
+	Users        []auth.User
+	Funnels      []query.Funnel
+	FunnelData   []query.FunnelStepResult
+	ActiveFunnel *query.Funnel
+	Range        string
+	Ranges       []rangeOpt
+	Summary      query.Summary
+	Vitals       query.Vitals
+	Chart        template.HTML
+	Panels       []panel
+	Realtime     int
+	GeoEnabled   bool
+	Public       bool
+	ShareToken   string
+	NewAPIKey    string
+	BaseURL      string
+	Error        string
+	Cards        []siteCard // overview landing page tiles
 }
 
 // ---- range handling ----
@@ -203,6 +204,10 @@ func (h *Handlers) buildDashboard(site *model.Site, rangeKey string) (*viewData,
 	if err != nil {
 		return nil, err
 	}
+	vitals, err := h.q.Vitals(site.ID, fromMs, toMs)
+	if err != nil {
+		return nil, err
+	}
 	series, err := h.q.TimeSeries(site.ID, fromMs, toMs, interval)
 	if err != nil {
 		return nil, err
@@ -212,14 +217,26 @@ func (h *Handlers) buildDashboard(site *model.Site, rangeKey string) (*viewData,
 		return nil, err
 	}
 
+	funnels, _ := h.q.ListFunnels(site.ID)
+	var activeFunnel *query.Funnel
+	var funnelResults []query.FunnelStepResult
+	if len(funnels) > 0 {
+		activeFunnel = &funnels[0]
+		funnelResults, _ = h.q.EvaluateFunnel(site.ID, activeFunnel.Steps, fromMs, toMs)
+	}
+
 	vd := &viewData{
-		Site:       site,
-		Range:      norm,
-		Ranges:     rangeOptions(norm),
-		Summary:    summary,
-		Chart:      areaChart(series, interval),
-		Realtime:   rt,
-		GeoEnabled: h.cfg.GeoEnabled,
+		Site:         site,
+		Range:        norm,
+		Ranges:       rangeOptions(norm),
+		Summary:      summary,
+		Vitals:       vitals,
+		Funnels:      funnels,
+		ActiveFunnel: activeFunnel,
+		FunnelData:   funnelResults,
+		Chart:        areaChart(series, interval),
+		Realtime:     rt,
+		GeoEnabled:   h.cfg.GeoEnabled,
 	}
 
 	identity := func(s string) string { return s }
@@ -242,8 +259,11 @@ func (h *Handlers) buildDashboard(site *model.Site, rangeKey string) (*viewData,
 		disp               func(string) string
 	}{
 		{"path", "Top pages", "Views", identity},
+		{"title", "Page titles", "Views", identity},
+		{"hostname", "Hostnames", "Views", identity},
 		{"referrer", "Referrers", "Views", identity},
 		{"country", "Countries", "Views", countryDisp},
+		{"city", "Cities", "Views", identity},
 		{"browser", "Browsers", "Views", identity},
 		{"os", "Operating systems", "Views", identity},
 		{"device", "Devices", "Views", title},
@@ -390,4 +410,54 @@ func (h *Handlers) Share(w http.ResponseWriter, r *http.Request) {
 	vd.Public = true
 	vd.ShareToken = tok
 	h.render(w, "index", vd)
+}
+
+// Export streams raw event logs for a site as CSV or JSON.
+func (h *Handlers) Export(w http.ResponseWriter, r *http.Request) {
+	site := h.currentSite(r)
+	if site == nil {
+		http.Error(w, "site not found", http.StatusNotFound)
+		return
+	}
+	fromMs, toMs, _, _ := resolveRange(r.URL.Query().Get("range"))
+	events, err := h.q.ExportEvents(site.ID, fromMs, toMs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rangeKey := r.URL.Query().Get("range")
+	if rangeKey == "" {
+		rangeKey = "7d"
+	}
+	domain := site.Domain
+	if domain == "" {
+		domain = "site"
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"glimt-%s-%s.json\"", domain, rangeKey))
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(events)
+		return
+	}
+
+	// Default CSV
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"glimt-%s-%s.csv\"", domain, rangeKey))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"Timestamp", "Type", "Name", "URL Path", "Page Title", "Hostname", "Referrer", "Browser", "OS", "Device", "Country", "Language", "LCP", "INP", "CLS", "TTFB", "Value"})
+	for _, e := range events {
+		tStr := time.UnixMilli(e.TS).UTC().Format(time.RFC3339)
+		_ = cw.Write([]string{
+			tStr, e.Type, e.Name, e.URLPath, e.PageTitle, e.Hostname, e.Referrer,
+			e.Browser, e.OS, e.Device, e.Country, e.Language,
+			fmt.Sprintf("%.0f", e.LCP), fmt.Sprintf("%.0f", e.INP), fmt.Sprintf("%.3f", e.CLS), fmt.Sprintf("%.0f", e.TTFB),
+			fmt.Sprintf("%.2f", e.Val),
+		})
+	}
+	cw.Flush()
 }

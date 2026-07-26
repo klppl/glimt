@@ -37,3 +37,30 @@ func TestFirstLang(t *testing.T) {
 		}
 	}
 }
+
+func TestPayloadEnrichTier1(t *testing.T) {
+	p := Payload{
+		N:    "purchase",
+		U:    "https://example.com/checkout?utm_source=google",
+		T:    "Checkout - Example Shop",
+		HN:   "example.com",
+		LCP:  1200.5,
+		INP:  150.0,
+		CLS:  0.05,
+		TTFB: 250.0,
+		Val:  99.95,
+	}
+
+	if p.T != "Checkout - Example Shop" {
+		t.Errorf("Title = %q", p.T)
+	}
+	if p.HN != "example.com" {
+		t.Errorf("Hostname = %q", p.HN)
+	}
+	if p.LCP != 1200.5 || p.INP != 150.0 || p.CLS != 0.05 || p.TTFB != 250.0 {
+		t.Errorf("Vitals error: %+v", p)
+	}
+	if p.Val != 99.95 {
+		t.Errorf("Val = %f, want 99.95", p.Val)
+	}
+}

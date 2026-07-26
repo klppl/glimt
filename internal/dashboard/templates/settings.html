@@ -47,6 +47,9 @@
     <pre class="snippet">{{.Snippet}}</pre>
     <p class="muted small">Served first-party at <code>{{.ScriptURL}}</code> — no recognizable name for filter lists to match.</p>
 
+    <label class="field-label" style="margin-top:0.8rem;">Tracking pixel (for HTML emails, RSS, or no-JS environments)</label>
+    <pre class="snippet">{{.PixelSnippet}}</pre>
+
     <div class="site-actions">
       <form method="post" action="/settings/sites/regen" onsubmit="return confirm('Rotate the script and collect paths? The old snippet will stop working.')">
         <input type="hidden" name="id" value="{{.Site.ID}}">
@@ -68,6 +71,36 @@
     </div>
   </section>
   {{end}}
+
+  <section class="card site-card" style="margin-top:1.4rem;">
+    <h3>User Management</h3>
+    <form class="row-form" method="post" action="/settings/users/create" style="margin-bottom:1rem;">
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <select name="role" style="padding:.55rem .7rem;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);">
+        <option value="admin">Admin</option>
+        <option value="member">Member</option>
+      </select>
+      <button type="submit">Add User</button>
+    </form>
+
+    {{if .Users}}
+    <ul class="bars" style="margin-top:0.5rem;">
+      {{range .Users}}
+      <li class="bar-row" style="justify-content:space-between;background:var(--bg);border:1px solid var(--line);margin-bottom:0.3rem;">
+        <div>
+          <strong>{{.Username}}</strong>
+          <span class="muted small" style="margin-left:0.5rem;">({{.Role}})</span>
+        </div>
+        <form method="post" action="/settings/users/delete" onsubmit="return confirm('Delete user {{.Username}}?')">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button class="danger small" type="submit" style="padding:0.2rem 0.5rem;font-size:0.75rem;">Delete</button>
+        </form>
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+  </section>
 
   <footer class="foot">powered by <strong>glimt</strong></footer>
 </div>

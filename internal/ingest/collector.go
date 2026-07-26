@@ -70,6 +70,60 @@ func (c *Collector) Handle(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandlePixel serves a 1x1 transparent GIF image for no-JS environments or email open tracking.
+func (c *Collector) HandlePixel(w http.ResponseWriter, r *http.Request) {
+	corsHeaders(w)
+
+	tok := chi.URLParam(r, "token")
+	site, ok := c.reg.ByCollect(tok)
+	if !ok {
+		servePixel(w)
+		return
+	}
+
+	q := r.URL.Query()
+	u := q.Get("u")
+	if u == "" {
+		u = r.Header.Get("Referer")
+	}
+	if u == "" {
+		u = "http://" + site.Domain + "/pixel"
+	}
+	title := q.Get("t")
+	if title == "" {
+		title = "Pixel"
+	}
+	eventName := q.Get("n")
+
+	p := Payload{
+		N: eventName,
+		U: u,
+		R: r.Header.Get("Referer"),
+		T: title,
+	}
+
+	ip := c.clientIP(r)
+	ev := c.in.build(site, p, ip, r.UserAgent(), r.Header.Get("Accept-Language"), c.country(r))
+	c.in.Enqueue(ev)
+
+	servePixel(w)
+}
+
+var transparentGif = []byte{
+	0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff,
+	0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
+}
+
+func servePixel(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, private")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(transparentGif)
+}
+
 // clientIP returns the connecting peer's address, or the configured real-IP
 // header when the peer is a trusted proxy. With no trusted proxies configured
 // the header is honored unconditionally (single-host / dev). The value is used

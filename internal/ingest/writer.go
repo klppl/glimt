@@ -134,10 +134,10 @@ func insertEvent(tx *sql.Tx, ev *model.Event) error {
 		res, err := tx.Exec(
 			`INSERT INTO session
 			 (website_id, visitor_hash, day, started_at, last_seen_at, entry_path, exit_path,
-			  pageviews, events, is_bounce, country, browser, os, device, ref_class, ref_source)
-			 VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)`,
+			  pageviews, events, is_bounce, country, browser, os, device, ref_class, ref_source, city)
+			 VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)`,
 			ev.WebsiteID, ev.VisitorHash, day, ev.TS, ev.TS, ev.URLPath, ev.URLPath,
-			pv, 1, ev.Country, ev.Browser, ev.OS, ev.Device, ev.RefClass, ev.RefSource)
+			pv, 1, ev.Country, ev.Browser, ev.OS, ev.Device, ev.RefClass, ev.RefSource, ev.City)
 		if err != nil {
 			return err
 		}
@@ -170,13 +170,15 @@ func insertEvent(tx *sql.Tx, ev *model.Event) error {
 
 	res, err := tx.Exec(
 		`INSERT INTO event
-		 (website_id, session_id, visitor_hash, ts, type, name, url_path, referrer,
+		 (website_id, session_id, visitor_hash, ts, type, name, url_path, page_title, hostname, referrer,
 		  ref_class, ref_source, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-		  browser, browser_ver, os, device, screen_bucket, language, country, region)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		ev.WebsiteID, sid, ev.VisitorHash, ev.TS, ev.Type, ev.Name, ev.URLPath, ev.Referrer,
+		  browser, browser_ver, os, device, screen_bucket, language, country, region, city,
+		  lcp, inp, cls, ttfb, val)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		ev.WebsiteID, sid, ev.VisitorHash, ev.TS, ev.Type, ev.Name, ev.URLPath, ev.PageTitle, ev.Hostname, ev.Referrer,
 		ev.RefClass, ev.RefSource, ev.UTMSource, ev.UTMMedium, ev.UTMCampaign, ev.UTMTerm, ev.UTMContent,
-		ev.Browser, ev.BrowserVer, ev.OS, ev.Device, ev.ScreenBucket, ev.Language, ev.Country, ev.Region)
+		ev.Browser, ev.BrowserVer, ev.OS, ev.Device, ev.ScreenBucket, ev.Language, ev.Country, ev.Region, ev.City,
+		ev.LCP, ev.INP, ev.CLS, ev.TTFB, ev.Val)
 	if err != nil {
 		return err
 	}

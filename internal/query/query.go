@@ -4,6 +4,9 @@
 package query
 
 import (
+	"encoding/json"
+	"time"
+
 	"github.com/klppl/glimt/internal/store"
 )
 
@@ -24,6 +27,35 @@ type Summary struct {
 	Visits      int     // sessions started in range
 	BounceRate  float64 // 0..1
 	AvgDuration float64 // seconds
+	Revenue     float64 // sum of numerical event values / revenue in range
+}
+
+type Vitals struct {
+	LCP   float64 // ms
+	INP   float64 // ms
+	CLS   float64 // unitless score
+	TTFB  float64 // ms
+	Count int
+}
+
+type ExportEvent struct {
+	TS        int64   `json:"timestamp"`
+	Type      string  `json:"type"`
+	Name      string  `json:"name,omitempty"`
+	URLPath   string  `json:"url_path"`
+	PageTitle string  `json:"page_title,omitempty"`
+	Hostname  string  `json:"hostname,omitempty"`
+	Referrer  string  `json:"referrer,omitempty"`
+	Browser   string  `json:"browser,omitempty"`
+	OS        string  `json:"os,omitempty"`
+	Device    string  `json:"device,omitempty"`
+	Country   string  `json:"country,omitempty"`
+	Language  string  `json:"language,omitempty"`
+	LCP       float64 `json:"lcp,omitempty"`
+	INP       float64 `json:"inp,omitempty"`
+	CLS       float64 `json:"cls,omitempty"`
+	TTFB      float64 `json:"ttfb,omitempty"`
+	Val       float64 `json:"val,omitempty"`
 }
 
 type Point struct {
@@ -72,7 +104,67 @@ func (q *Querier) Summary(siteID, fromMs, toMs int64) (Summary, error) {
 		return s, err
 	}
 	s.AvgDuration /= 1000 // ms -> seconds
+
+	// Compute revenue / numeric event values sum
+	_ = q.db.R.QueryRow(
+		`SELECT COALESCE(SUM(val),0) FROM event
+		 WHERE `+where+` AND ts >= ? AND ts < ? AND val IS NOT NULL AND val > 0`,
+		append(args, fromMs, toMs)...).Scan(&s.Revenue)
+
 	return s, nil
+}
+
+// Vitals computes average Core Web Vitals over [fromMs, toMs).
+func (q *Querier) Vitals(siteID, fromMs, toMs int64) (Vitals, error) {
+	var v Vitals
+	where, args := scope(siteID)
+	err := q.db.R.QueryRow(
+		`SELECT COALESCE(AVG(NULLIF(lcp, 0)), 0),
+		        COALESCE(AVG(NULLIF(inp, 0)), 0),
+		        COALESCE(AVG(NULLIF(cls, 0)), 0),
+		        COALESCE(AVG(NULLIF(ttfb, 0)), 0),
+		        COUNT(CASE WHEN lcp>0 OR inp>0 OR cls>0 OR ttfb>0 THEN 1 END)
+		 FROM event
+		 WHERE `+where+` AND ts >= ? AND ts < ?`,
+		append(args, fromMs, toMs)...).Scan(&v.LCP, &v.INP, &v.CLS, &v.TTFB, &v.Count)
+	return v, err
+}
+
+// ExportEvents retrieves event logs for raw CSV/JSON data export.
+func (q *Querier) ExportEvents(siteID, fromMs, toMs int64) ([]ExportEvent, error) {
+	where, args := scope(siteID)
+	rows, err := q.db.R.Query(
+		`SELECT ts, type, COALESCE(name,''), COALESCE(url_path,''), COALESCE(page_title,''), COALESCE(hostname,''),
+		        COALESCE(referrer,''), COALESCE(browser,''), COALESCE(os,''), COALESCE(device,''),
+		        COALESCE(country,''), COALESCE(language,''),
+		        COALESCE(lcp,0), COALESCE(inp,0), COALESCE(cls,0), COALESCE(ttfb,0), COALESCE(val,0)
+		 FROM event
+		 WHERE `+where+` AND ts >= ? AND ts < ?
+		 ORDER BY ts DESC LIMIT 10000`,
+		append(args, fromMs, toMs)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ExportEvent
+	for rows.Next() {
+		var e ExportEvent
+		var typ int
+		if err := rows.Scan(&e.TS, &typ, &e.Name, &e.URLPath, &e.PageTitle, &e.Hostname,
+			&e.Referrer, &e.Browser, &e.OS, &e.Device,
+			&e.Country, &e.Language,
+			&e.LCP, &e.INP, &e.CLS, &e.TTFB, &e.Val); err != nil {
+			return nil, err
+		}
+		if typ == 0 {
+			e.Type = "pageview"
+		} else {
+			e.Type = "custom"
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // TimeSeries returns zero-filled buckets. interval is "hour" or "day".
@@ -178,4 +270,151 @@ func (q *Querier) Realtime(siteID, nowMs int64) (int, error) {
 		 WHERE `+where+` AND ts > ?`,
 		append(args, nowMs-5*60*1000)...).Scan(&n)
 	return n, err
+}
+
+type FunnelStep struct {
+	Name  string `json:"name"`  // e.g. "/checkout" or "purchase"
+	IsURL bool   `json:"is_url"` // true if URL path, false if event name
+}
+
+type FunnelStepResult struct {
+	Step       string  `json:"step"`
+	Count      int     `json:"count"`
+	Percentage float64 `json:"percentage"`
+	Dropoff    float64 `json:"dropoff"`
+}
+
+type Funnel struct {
+	ID        int64        `json:"id"`
+	WebsiteID int64        `json:"website_id"`
+	Name      string       `json:"name"`
+	Steps     []FunnelStep `json:"steps"`
+	CreatedAt int64        `json:"created_at"`
+}
+
+func (q *Querier) CreateFunnel(siteID int64, name string, steps []FunnelStep) (*Funnel, error) {
+	b, err := json.Marshal(steps)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	res, err := q.db.W.Exec(
+		`INSERT INTO funnel(website_id, name, steps_json, created_at) VALUES(?,?,?,?)`,
+		siteID, name, string(b), now)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return &Funnel{ID: id, WebsiteID: siteID, Name: name, Steps: steps, CreatedAt: now}, nil
+}
+
+func (q *Querier) ListFunnels(siteID int64) ([]Funnel, error) {
+	where, args := scope(siteID)
+	rows, err := q.db.R.Query(
+		`SELECT id, website_id, name, steps_json, created_at FROM funnel WHERE `+where+` ORDER BY created_at DESC`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Funnel
+	for rows.Next() {
+		var fn Funnel
+		var sJSON string
+		if err := rows.Scan(&fn.ID, &fn.WebsiteID, &fn.Name, &sJSON, &fn.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(sJSON), &fn.Steps)
+		out = append(out, fn)
+	}
+	return out, rows.Err()
+}
+
+func (q *Querier) DeleteFunnel(id int64) error {
+	_, err := q.db.W.Exec(`DELETE FROM funnel WHERE id = ?`, id)
+	return err
+}
+
+func (q *Querier) EvaluateFunnel(siteID int64, steps []FunnelStep, fromMs, toMs int64) ([]FunnelStepResult, error) {
+	if len(steps) == 0 {
+		return nil, nil
+	}
+
+	where, args := scope(siteID)
+	rows, err := q.db.R.Query(
+		`SELECT session_id, ts, type, COALESCE(name,''), COALESCE(url_path,'')
+		 FROM event
+		 WHERE `+where+` AND ts >= ? AND ts < ?
+		 ORDER BY session_id, ts ASC`,
+		append(args, fromMs, toMs)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type eventEntry struct {
+		ts    int64
+		isURL bool
+		val   string
+	}
+	sessionEvents := map[int64][]eventEntry{}
+	for rows.Next() {
+		var sid, ts int64
+		var typ int
+		var name, path string
+		if err := rows.Scan(&sid, &ts, &typ, &name, &path); err != nil {
+			return nil, err
+		}
+		if typ == 0 {
+			sessionEvents[sid] = append(sessionEvents[sid], eventEntry{ts: ts, isURL: true, val: path})
+		} else {
+			sessionEvents[sid] = append(sessionEvents[sid], eventEntry{ts: ts, isURL: false, val: name})
+		}
+	}
+
+	stepCounts := make([]int, len(steps))
+	for _, events := range sessionEvents {
+		stepIdx := 0
+		var lastTs int64 = 0
+		for _, e := range events {
+			if stepIdx >= len(steps) {
+				break
+			}
+			targetStep := steps[stepIdx]
+			if e.isURL == targetStep.IsURL && e.val == targetStep.Name && e.ts >= lastTs {
+				stepCounts[stepIdx]++
+				lastTs = e.ts
+				stepIdx++
+			}
+		}
+	}
+
+	var results []FunnelStepResult
+	baseCount := 0
+	if len(stepCounts) > 0 {
+		baseCount = stepCounts[0]
+	}
+
+	for i, st := range steps {
+		cnt := stepCounts[i]
+		pct := 0.0
+		if baseCount > 0 {
+			pct = float64(cnt) / float64(baseCount) * 100.0
+		}
+		dropoff := 0.0
+		if i > 0 && stepCounts[i-1] > 0 {
+			dropoff = float64(stepCounts[i-1]-cnt) / float64(stepCounts[i-1]) * 100.0
+		}
+		results = append(results, FunnelStepResult{
+			Step:       st.Name,
+			Count:      cnt,
+			Percentage: pct,
+			Dropoff:    dropoff,
+		})
+	}
+	return results, nil
 }

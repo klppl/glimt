@@ -29,8 +29,11 @@ var eventDims = []struct {
 	pageviewsOnly bool
 }{
 	{"path", "url_path", true},
+	{"title", "page_title", true},
+	{"hostname", "hostname", false},
 	{"country", "country", false},
 	{"region", "region", false},
+	{"city", "city", false},
 	{"browser", "browser", false},
 	{"os", "os", false},
 	{"device", "device", false},

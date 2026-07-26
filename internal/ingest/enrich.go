@@ -13,13 +13,20 @@ import (
 // Payload is the compact JSON the tracking snippet posts. Field names are kept
 // short to keep the snippet tiny; they carry no meaning to ad-block lists.
 type Payload struct {
-	N string            `json:"n"` // event name ("" or "pageview" => pageview)
-	U string            `json:"u"` // current full URL
-	R string            `json:"r"` // document.referrer
-	W int               `json:"w"` // screen width
-	H int               `json:"h"` // screen height
-	L string            `json:"l"` // navigator.language
-	P map[string]string `json:"p"` // optional custom props
+	N    string            `json:"n"`    // event name ("" or "pageview" => pageview)
+	U    string            `json:"u"`    // current full URL
+	R    string            `json:"r"`    // document.referrer
+	W    int               `json:"w"`    // screen width
+	H    int               `json:"h"`    // screen height
+	L    string            `json:"l"`    // navigator.language
+	T    string            `json:"t"`    // document.title
+	HN   string            `json:"hn"`   // hostname
+	LCP  float64           `json:"lcp"`  // Core Web Vitals
+	INP  float64           `json:"inp"`  // Core Web Vitals
+	CLS  float64           `json:"cls"`  // Core Web Vitals
+	TTFB float64           `json:"ttfb"` // Core Web Vitals
+	Val  float64           `json:"val"`  // event numeric value / revenue
+	P    map[string]string `json:"p"`    // optional custom props
 }
 
 // build converts a raw payload + request context into a storable Event. The IP
@@ -32,6 +39,13 @@ func (in *Ingestor) build(site *model.Site, p Payload, ip, userAgent, acceptLang
 		WebsiteID:   site.ID,
 		TS:          now,
 		VisitorHash: in.salt.Hash(site.ID, ip, userAgent),
+		PageTitle:   truncate(p.T, 255),
+		Hostname:    truncate(p.HN, 100),
+		LCP:         p.LCP,
+		INP:         p.INP,
+		CLS:         p.CLS,
+		TTFB:        p.TTFB,
+		Val:         p.Val,
 	}
 
 	r := ua.Parse(userAgent)
@@ -40,11 +54,14 @@ func (in *Ingestor) build(site *model.Site, p Payload, ip, userAgent, acceptLang
 	if geoCountry != "" {
 		ev.Country = geoCountry // CF provides country only, no subdivision
 	} else {
-		ev.Country, ev.Region = in.geo.Lookup(ip)
+		ev.Country, ev.Region, ev.City = in.geo.Lookup(ip)
 	}
 
 	if u, err := url.Parse(p.U); err == nil {
 		ev.URLPath = cleanPath(u.Path)
+		if ev.Hostname == "" {
+			ev.Hostname = truncate(u.Hostname(), 100)
+		}
 		q := u.Query()
 		ev.UTMSource = q.Get("utm_source")
 		ev.UTMMedium = q.Get("utm_medium")
