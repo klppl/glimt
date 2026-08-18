@@ -8,6 +8,15 @@
 // Set the theme before paint to avoid a flash of the wrong palette.
 (function(){try{var t=localStorage.getItem('glimt-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 function glimtToggleTheme(){var d=document.documentElement;var t=d.getAttribute('data-theme')==='dark'?'light':'dark';d.setAttribute('data-theme',t);try{localStorage.setItem('glimt-theme',t);}catch(e){}}
+function glimtCopy(btn, text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      var orig = btn.innerText;
+      btn.innerText = 'Copied!';
+      setTimeout(function() { btn.innerText = orig; }, 1500);
+    });
+  }
+}
 </script>
 <link rel="stylesheet" href="/assets/app.css">
 <script defer src="/assets/htmx.min.js"></script>

@@ -42,10 +42,16 @@ var eventDims = []struct {
 }
 
 type Worker struct {
-	db *store.DB
+	db            *store.DB
+	retentionDays int
 }
 
-func New(db *store.DB) *Worker { return &Worker{db: db} }
+func New(db *store.DB, retentionDays int) *Worker {
+	return &Worker{
+		db:            db,
+		retentionDays: retentionDays,
+	}
+}
 
 // Run blocks until ctx is cancelled, ticking every interval. It runs one pass
 // immediately so the dashboard has data on first load.
@@ -87,6 +93,18 @@ func (w *Worker) recompute(now time.Time) error {
 	}
 	if err := w.recomputeDims(tx, fromDay, fromDayMs); err != nil {
 		return err
+	}
+	if w.retentionDays > 0 {
+		cutoffMs := now.AddDate(0, 0, -w.retentionDays).UnixMilli()
+		if _, err := tx.Exec(`DELETE FROM event_prop WHERE event_id IN (SELECT id FROM event WHERE ts < ?)`, cutoffMs); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM event WHERE ts < ?`, cutoffMs); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM session WHERE last_seen_at < ?`, cutoffMs); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

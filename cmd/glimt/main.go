@@ -105,7 +105,7 @@ func run() error {
 	trk := tracker.New(reg, cfg.JSGlobal, cfg.BaseURL)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	rw := rollup.New(db)
+	rw := rollup.New(db, cfg.RetentionDays)
 	go rw.Run(ctx)
 
 	srv := &http.Server{

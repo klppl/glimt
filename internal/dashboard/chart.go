@@ -42,16 +42,38 @@ func areaChart(series []query.Point, interval string) template.HTML {
 		return pad + innerH - float64(v)/float64(maxV)*innerH
 	}
 
+	layout := "Jan 2"
+	if interval == "hour" {
+		layout = "15:04"
+	}
+
 	var line strings.Builder
 	var area strings.Builder
+	var dots strings.Builder
 	fmt.Fprintf(&area, "M %.1f %.1f ", x(0), h-pad)
 	for i, p := range series {
 		cmd := "L"
 		if i == 0 {
 			cmd = "M"
 		}
-		fmt.Fprintf(&line, "%s %.1f %.1f ", cmd, x(i), y(p.Pageviews))
-		fmt.Fprintf(&area, "L %.1f %.1f ", x(i), y(p.Pageviews))
+		cx := x(i)
+		cy := y(p.Pageviews)
+		fmt.Fprintf(&line, "%s %.1f %.1f ", cmd, cx, cy)
+		fmt.Fprintf(&area, "L %.1f %.1f ", cx, cy)
+
+		t := time.UnixMilli(p.Bucket).UTC()
+		dateStr := t.Format(layout)
+		pvLabel := "pageviews"
+		if p.Pageviews == 1 {
+			pvLabel = "pageview"
+		}
+		visLabel := "visitors"
+		if p.Visitors == 1 {
+			visLabel = "visitor"
+		}
+		titleText := fmt.Sprintf("%s: %d %s (%d %s)", dateStr, p.Pageviews, pvLabel, p.Visitors, visLabel)
+		fmt.Fprintf(&dots, `<circle class="dot" cx="%.1f" cy="%.1f" r="3.5"><title>%s</title></circle>`,
+			cx, cy, template.HTMLEscapeString(titleText))
 	}
 	fmt.Fprintf(&area, "L %.1f %.1f Z", x(n-1), h-pad)
 
@@ -69,10 +91,11 @@ func areaChart(series []query.Point, interval string) template.HTML {
 <path d="%s" class="area"/>
 <path d="%s" class="line"/>
 %s
+%s
 </svg>`,
 		w, h,
 		pad, h-pad, w-pad, h-pad,
-		area.String(), line.String(), ticks.String())
+		area.String(), line.String(), dots.String(), ticks.String())
 
 	return template.HTML(svg)
 }

@@ -121,6 +121,8 @@ type viewData struct {
 	FunnelData   []query.FunnelStepResult
 	ActiveFunnel *query.Funnel
 	Range        string
+	FromDate     string
+	ToDate       string
 	Ranges       []rangeOpt
 	Summary      query.Summary
 	Vitals       query.Vitals
@@ -139,20 +141,48 @@ type viewData struct {
 // ---- range handling ----
 
 func resolveRange(key string) (fromMs, toMs int64, interval, norm string) {
+	fromMs, toMs, interval, norm, _, _ = resolveRangeParams(key, "", "")
+	return
+}
+
+func resolveRangeParams(key, fromStr, toStr string) (fromMs, toMs int64, interval, norm, fromDate, toDate string) {
 	now := time.Now().UTC()
 	toMs = now.UnixMilli()
 	switch key {
 	case "today":
 		from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-		return from.UnixMilli(), toMs, "hour", "today"
+		return from.UnixMilli(), toMs, "hour", "today", "", ""
 	case "24h":
-		return now.Add(-24 * time.Hour).UnixMilli(), toMs, "hour", "24h"
+		return now.Add(-24 * time.Hour).UnixMilli(), toMs, "hour", "24h", "", ""
 	case "30d":
-		return now.AddDate(0, 0, -30).UnixMilli(), toMs, "day", "30d"
+		return now.AddDate(0, 0, -30).UnixMilli(), toMs, "day", "30d", "", ""
 	case "90d":
-		return now.AddDate(0, 0, -90).UnixMilli(), toMs, "day", "90d"
+		return now.AddDate(0, 0, -90).UnixMilli(), toMs, "day", "90d", "", ""
+	case "custom":
+		if fromStr == "" || toStr == "" {
+			dFrom := now.AddDate(0, 0, -7)
+			return dFrom.UnixMilli(), toMs, "day", "custom", dFrom.Format("2006-01-02"), now.Format("2006-01-02")
+		}
+		tFrom, errFrom := time.Parse("2006-01-02", fromStr)
+		tTo, errTo := time.Parse("2006-01-02", toStr)
+		if errFrom != nil || errTo != nil {
+			dFrom := now.AddDate(0, 0, -7)
+			return dFrom.UnixMilli(), toMs, "day", "custom", dFrom.Format("2006-01-02"), now.Format("2006-01-02")
+		}
+		fMs := tFrom.UTC().UnixMilli()
+		tToNext := time.Date(tTo.Year(), tTo.Month(), tTo.Day(), 23, 59, 59, 999000000, time.UTC)
+		tMs := tToNext.UnixMilli()
+		if tMs < fMs {
+			dFrom := now.AddDate(0, 0, -7)
+			return dFrom.UnixMilli(), toMs, "day", "custom", dFrom.Format("2006-01-02"), now.Format("2006-01-02")
+		}
+		inter := "day"
+		if tMs-fMs <= int64(48*time.Hour/time.Millisecond) {
+			inter = "hour"
+		}
+		return fMs, tMs, inter, "custom", tFrom.Format("2006-01-02"), tTo.Format("2006-01-02")
 	default:
-		return now.AddDate(0, 0, -7).UnixMilli(), toMs, "day", "7d"
+		return now.AddDate(0, 0, -7).UnixMilli(), toMs, "day", "7d", "", ""
 	}
 }
 
@@ -163,6 +193,7 @@ func rangeOptions(sel string) []rangeOpt {
 		{"7d", "7 days", false},
 		{"30d", "30 days", false},
 		{"90d", "90 days", false},
+		{"custom", "Custom", false},
 	}
 	for i := range opts {
 		opts[i].Selected = opts[i].Key == sel
@@ -197,8 +228,8 @@ func (h *Handlers) currentSite(r *http.Request) *model.Site {
 	return all[0]
 }
 
-func (h *Handlers) buildDashboard(site *model.Site, rangeKey string) (*viewData, error) {
-	fromMs, toMs, interval, norm := resolveRange(rangeKey)
+func (h *Handlers) buildDashboard(site *model.Site, rangeKey, fromStr, toStr string) (*viewData, error) {
+	fromMs, toMs, interval, norm, fromDate, toDate := resolveRangeParams(rangeKey, fromStr, toStr)
 
 	summary, err := h.q.Summary(site.ID, fromMs, toMs)
 	if err != nil {
@@ -228,6 +259,8 @@ func (h *Handlers) buildDashboard(site *model.Site, rangeKey string) (*viewData,
 	vd := &viewData{
 		Site:         site,
 		Range:        norm,
+		FromDate:     fromDate,
+		ToDate:       toDate,
 		Ranges:       rangeOptions(norm),
 		Summary:      summary,
 		Vitals:       vitals,
@@ -318,7 +351,7 @@ func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 		return
 	}
-	vd, err := h.buildDashboard(site, r.URL.Query().Get("range"))
+	vd, err := h.buildDashboard(site, r.URL.Query().Get("range"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -336,7 +369,7 @@ func (h *Handlers) home(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 		return
 	}
-	fromMs, toMs, _, norm := resolveRange(r.URL.Query().Get("range"))
+	fromMs, toMs, _, norm, fromDate, toDate := resolveRangeParams(r.URL.Query().Get("range"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	now := time.Now().UnixMilli()
 
 	card := func(id int64, name string, combined bool) (siteCard, error) {
@@ -348,9 +381,13 @@ func (h *Handlers) home(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return siteCard{}, err
 		}
+		href := fmt.Sprintf("/?site=%d&range=%s", id, norm)
+		if norm == "custom" && fromDate != "" && toDate != "" {
+			href += fmt.Sprintf("&from=%s&to=%s", fromDate, toDate)
+		}
 		return siteCard{
 			Name:     name,
-			Href:     fmt.Sprintf("/?site=%d&range=%s", id, norm),
+			Href:     href,
 			Summary:  sum,
 			Realtime: rt,
 			Combined: combined,
@@ -360,6 +397,8 @@ func (h *Handlers) home(w http.ResponseWriter, r *http.Request) {
 	vd := &viewData{
 		Title:      "Overview",
 		Range:      norm,
+		FromDate:   fromDate,
+		ToDate:     toDate,
 		Ranges:     rangeOptions(norm),
 		GeoEnabled: h.cfg.GeoEnabled,
 	}
@@ -401,7 +440,7 @@ func (h *Handlers) Share(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	vd, err := h.buildDashboard(site, r.URL.Query().Get("range"))
+	vd, err := h.buildDashboard(site, r.URL.Query().Get("range"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -419,14 +458,14 @@ func (h *Handlers) Export(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}
-	fromMs, toMs, _, _ := resolveRange(r.URL.Query().Get("range"))
+	fromMs, toMs, _, norm, _, _ := resolveRangeParams(r.URL.Query().Get("range"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	events, err := h.q.ExportEvents(site.ID, fromMs, toMs)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	rangeKey := r.URL.Query().Get("range")
+	rangeKey := norm
 	if rangeKey == "" {
 		rangeKey = "7d"
 	}

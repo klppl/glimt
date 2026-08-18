@@ -110,6 +110,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .chart .axis{stroke:var(--line);stroke-width:1}
 .chart .area{fill:var(--accent-soft)}
 .chart .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .dot{fill:var(--accent);cursor:pointer;transition:r .15s ease,fill .15s ease}
+.chart .dot:hover{r:5.5;fill:var(--strong)}
 .chart .ax{fill:var(--muted);font-size:11px;text-anchor:middle}
 .chart-empty{padding:3rem 1rem;text-align:center;color:var(--muted)}
 

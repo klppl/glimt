@@ -38,3 +38,22 @@ func TestParseTrustedProxies(t *testing.T) {
 		t.Errorf("empty config = %d nets, want 0", len(n))
 	}
 }
+
+func TestRetentionDays(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.RetentionDays != 0 {
+		t.Errorf("default RetentionDays = %d, want 0", cfg.RetentionDays)
+	}
+
+	t.Setenv("GLIMT_RETENTION_DAYS", "30")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.RetentionDays != 30 {
+		t.Errorf("GLIMT_RETENTION_DAYS=30 -> RetentionDays = %d, want 30", cfg.RetentionDays)
+	}
+}

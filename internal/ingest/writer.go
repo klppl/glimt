@@ -174,7 +174,7 @@ func insertEvent(tx *sql.Tx, ev *model.Event) error {
 		  ref_class, ref_source, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
 		  browser, browser_ver, os, device, screen_bucket, language, country, region, city,
 		  lcp, inp, cls, ttfb, val)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		ev.WebsiteID, sid, ev.VisitorHash, ev.TS, ev.Type, ev.Name, ev.URLPath, ev.PageTitle, ev.Hostname, ev.Referrer,
 		ev.RefClass, ev.RefSource, ev.UTMSource, ev.UTMMedium, ev.UTMCampaign, ev.UTMTerm, ev.UTMContent,
 		ev.Browser, ev.BrowserVer, ev.OS, ev.Device, ev.ScreenBucket, ev.Language, ev.Country, ev.Region, ev.City,

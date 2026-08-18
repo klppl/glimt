@@ -21,18 +21,30 @@
   </header>
 
   <div class="top-controls" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.4rem;flex-wrap:wrap;gap:0.5rem;">
-    <nav class="ranges" style="margin-bottom:0;">
-      {{$base := "/"}}{{$q := printf "?site=%d&range=" .Site.ID}}
-      {{if .Public}}{{$base = printf "/p/%s" .ShareToken}}{{$q = "?range="}}{{end}}
-      {{range .Ranges}}
-      <a class="range {{if .Selected}}active{{end}}" href="{{$base}}{{$q}}{{.Key}}">{{.Label}}</a>
+    <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;">
+      <nav class="ranges" style="margin-bottom:0;">
+        {{$base := "/"}}{{$q := printf "?site=%d&range=" .Site.ID}}
+        {{if .Public}}{{$base = printf "/p/%s" .ShareToken}}{{$q = "?range="}}{{end}}
+        {{range .Ranges}}
+        <a class="range {{if .Selected}}active{{end}}" href="{{$base}}{{$q}}{{.Key}}">{{.Label}}</a>
+        {{end}}
+      </nav>
+      {{if eq .Range "custom"}}
+      <form method="get" action="{{$base}}" style="display:inline-flex;align-items:center;gap:0.4rem;">
+        {{if not .Public}}<input type="hidden" name="site" value="{{.Site.ID}}">{{end}}
+        <input type="hidden" name="range" value="custom">
+        <input type="date" name="from" value="{{.FromDate}}" required style="padding:0.2rem 0.4rem;font-size:0.8rem;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text);">
+        <span class="muted" style="font-size:0.8rem;">to</span>
+        <input type="date" name="to" value="{{.ToDate}}" required style="padding:0.2rem 0.4rem;font-size:0.8rem;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text);">
+        <button type="submit" style="padding:0.2rem 0.6rem;font-size:0.8rem;">Apply</button>
+      </form>
       {{end}}
-    </nav>
+    </div>
     {{if not .Public}}
     <div class="export-actions" style="display:flex;gap:0.5rem;align-items:center;">
       <span class="small muted">Export:</span>
-      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}&format=csv" download>CSV</a>
-      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}&format=json" download>JSON</a>
+      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}{{if eq .Range "custom"}}&from={{.FromDate}}&to={{.ToDate}}{{end}}&format=csv" download>CSV</a>
+      <a class="navlink" href="/app/export?site={{.Site.ID}}&range={{.Range}}{{if eq .Range "custom"}}&from={{.FromDate}}&to={{.ToDate}}{{end}}&format=json" download>JSON</a>
     </div>
     {{end}}
   </div>

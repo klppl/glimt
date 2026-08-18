@@ -24,6 +24,7 @@ type Config struct {
 	CFCountry       bool   `json:"cf_country"`        // derive country from Cloudflare's CF-IPCountry header
 	JSGlobal        string `json:"js_global"`         // global name the snippet exposes for custom events
 	SessionTTLHours int    `json:"session_ttl_hours"` // admin login session lifetime
+	RetentionDays   int    `json:"retention_days"`    // raw event retention in days (0 = keep forever)
 
 	SessionTTL       time.Duration `json:"-"`
 	TrustedProxyNets []*net.IPNet  `json:"-"`
@@ -36,6 +37,7 @@ func Load() (*Config, error) {
 		RealIPHeader:    "X-Forwarded-For",
 		JSGlobal:        "glimt",
 		SessionTTLHours: 24 * 7,
+		RetentionDays:   0,
 	}
 
 	if p := os.Getenv("GLIMT_CONFIG"); p != "" {
@@ -63,6 +65,11 @@ func Load() (*Config, error) {
 	if v := os.Getenv("GLIMT_SESSION_TTL_HOURS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.SessionTTLHours = n
+		}
+	}
+	if v := os.Getenv("GLIMT_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.RetentionDays = n
 		}
 	}
 

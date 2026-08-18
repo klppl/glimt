@@ -43,11 +43,15 @@
       </form>
     </div>
 
-    <label class="field-label">Install snippet (add to your site's &lt;head&gt;)</label>
+    <label class="field-label" style="display:block;">Install snippet (add to your site's &lt;head&gt;)
+      <button type="button" class="small" style="float:right;padding:0.2rem 0.5rem;font-size:0.75rem;" onclick="glimtCopy(this, this.parentElement.nextElementSibling.innerText)">Copy</button>
+    </label>
     <pre class="snippet">{{.Snippet}}</pre>
     <p class="muted small">Served first-party at <code>{{.ScriptURL}}</code> — no recognizable name for filter lists to match.</p>
 
-    <label class="field-label" style="margin-top:0.8rem;">Tracking pixel (for HTML emails, RSS, or no-JS environments)</label>
+    <label class="field-label" style="margin-top:0.8rem;display:block;">Tracking pixel (for HTML emails, RSS, or no-JS environments)
+      <button type="button" class="small" style="float:right;padding:0.2rem 0.5rem;font-size:0.75rem;" onclick="glimtCopy(this, this.parentElement.nextElementSibling.innerText)">Copy</button>
+    </label>
     <pre class="snippet">{{.PixelSnippet}}</pre>
 
     <div class="site-actions">
