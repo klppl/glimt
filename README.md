@@ -1,5 +1,7 @@
 # glimt
 
+[![License: Lagom](https://img.shields.io/badge/license-lagom-9E2B25)](https://klppl.github.io/lagom-license/)
+
 Self-hosted, privacy-first web analytics in a single static Go binary + one
 SQLite file. Cookieless, no raw IP stored, and served first-party so ad-block
 lists can't match it.
